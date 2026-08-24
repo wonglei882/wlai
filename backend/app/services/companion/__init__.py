@@ -39,6 +39,7 @@ from app.services.companion.secretary import (
     compose_milestone_message,
     personal_greeting,
 )
+from app.services.companion.guidance_feedback import record_guidance_feedback
 from app.services.companion import prompts
 
 __all__ = [
@@ -63,6 +64,8 @@ __all__ = [
     'compose_milestone_message',
     'compose_gentle_reminder',
     'personal_greeting',
+    # 引导反馈（L4 经验进化）
+    'record_guidance_feedback',
     # 提示词模板
     'prompts',
 ]

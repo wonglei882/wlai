@@ -95,6 +95,14 @@ features:
       socratic_levels: 3          # 引导提问层数（现象→原因→方案）
       tutor_tiers: ["principle", "hint", "example"]  # 家教分层反馈递进
 
+    learning:
+      enabled: false
+      description: "经验进化（L4）：修复模式沉淀复用 + 用户画像学习 + 引导采纳反馈"
+      trigger: "continuous"
+      token_cost: "low"
+      pattern_store_limit: 50    # 模式库单类型保留上限
+      profile_recompute_every: 20  # 每 N 次决策重算经验水平
+
 
   # ============================================================================
   # 批处理功能（离线执行，降低在线负载）

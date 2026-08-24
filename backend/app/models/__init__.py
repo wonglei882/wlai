@@ -21,6 +21,8 @@ from app.models.pm_autonomy_config import PMAutonomyConfig
 from app.models.pm_consistency_state import PMConsistencyState
 from app.models.pm_decision_log import PMDecisionLog
 from app.models.pm_diagnostic_log import PMDiagnosticLog
+from app.models.pm_fix_pattern import PMFixPattern
+from app.models.pm_guidance_feedback import PMGuidanceFeedback
 from app.models.pm_goal_tree import PMGoalTree
 from app.models.pm_history_patterns import PMHistoryPattern
 from app.models.pm_leader_lock import PMLeaderLock
@@ -53,6 +55,8 @@ __all__ = [
     'PMConsistencyState',
     'PMDecisionLog',
     'PMDiagnosticLog',
+    'PMFixPattern',
+    'PMGuidanceFeedback',
     'PMGoalTree',
     'PMHistoryPattern',
     'PMLeaderLock',

@@ -70,6 +70,15 @@ class SocraticReplyIn(BaseModel):
     answer: str
 
 
+class GuidanceFeedbackIn(BaseModel):
+    """引导采纳反馈（L4 经验进化）：用户是否采纳、问题是否解决。"""
+    decision_log_id: str = ''   # 引导那次决策的 PMDecisionLog.id
+    project_id: str = ''
+    issue_type: str = ''
+    adopted: bool = False
+    solved: bool = False
+
+
 # =============================================================================
 # S · 苏格拉底引导
 # =============================================================================
@@ -110,6 +119,28 @@ async def submit_socratic_reply(
         db, user_id, {'type': payload.issue_type, 'message': payload.message}, payload.answer,
     )
     return {'enabled': True, 'feedback': reply}
+
+
+@router.post('/guidance/feedback')
+async def submit_guidance_feedback(user_id: str, payload: GuidanceFeedbackIn, db=Depends(get_db)):
+    """提交引导采纳/解决反馈，为引导效果学习提供信号。"""
+    if not await _companion_enabled():
+        return {'enabled': False, 'message': '陪伴功能未开启（pm_features: optional.companion）'}
+    if payload.project_id:
+        await _validate_project_ownership(db, payload.project_id, user_id)
+
+    from app.services.companion import record_guidance_feedback
+
+    recorded = await record_guidance_feedback(
+        db,
+        decision_log_id=payload.decision_log_id,
+        project_id=payload.project_id,
+        user_id=user_id,
+        issue_type=payload.issue_type,
+        adopted=payload.adopted,
+        solved=payload.solved,
+    )
+    return {'enabled': True, 'recorded': recorded}
 
 
 # =============================================================================

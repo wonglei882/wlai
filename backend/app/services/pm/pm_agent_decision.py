@@ -436,14 +436,35 @@ async def _decide_action(
     except Exception as _ref_e:
         logger.debug(f'[PM-Agent 反思] 读失败模式失败（忽略）: {_ref_e}')
 
-    _score = _compute_decision_score(
-        severity_val=_severity_val,
-        success_rate=(project_success_rate if project_success_rate is not None else 0.7),
-        cooldown_penalty=_pr_cooldown,
-        issue_confidence=_pr_confidence,
-        drift_risk=0.0,  # drift 由 _execute_and_verify 中用真实 fix_action 评估
-        uncertainty_penalty=_uncertainty_penalty,
-    ) - _reflection_penalty
+    # L4 经验进化：修复模式库复用（成功先例 → 评分提升，非阻塞）
+    _pattern_boost = 0.0
+    try:
+        from app.services.pm.feature_config import is_pm_feature_enabled
+        from app.services.pm.pm_fix_pattern import bump_pattern_use, find_best_pattern, pattern_boost as _pb
+
+        if is_pm_feature_enabled('optional.learning'):
+            _pat = await find_best_pattern(db, diag_type)
+            if _pat:
+                _pattern_boost = _pb(_pat)
+                await bump_pattern_use(db, _pat)
+                logger.info(
+                    f'[PM-FixPattern] 复用成功先例(type={diag_type}, success={_pat.success_count})，评分 +{_pattern_boost:.2f}'
+                )
+    except Exception as _pat_e:
+        logger.debug(f'[PM-FixPattern] 复用失败（非阻塞）: {_pat_e}')
+
+    _score = (
+        _compute_decision_score(
+            severity_val=_severity_val,
+            success_rate=(project_success_rate if project_success_rate is not None else 0.7),
+            cooldown_penalty=_pr_cooldown,
+            issue_confidence=_pr_confidence,
+            drift_risk=0.0,  # drift 由 _execute_and_verify 中用真实 fix_action 评估
+            uncertainty_penalty=_uncertainty_penalty,
+        )
+        - _reflection_penalty
+        + _pattern_boost
+    )
     if has_fix and severity in ('critical', 'warning'):
         # 方案一：自主等级阈值统一（PMAutonomyConfig.level 调制阈值；
         # 开关关闭/无配置行/异常 → advisor_plus 阈值 = 历史硬编码行为）
@@ -592,6 +613,20 @@ async def _finalize_decision(
         metrics.record_verify(verified)
     except Exception as e:
         logger.debug(f'[PM] metrics 记录失败 (忽略): {e}')
+
+    # ===== L4 经验进化：沉淀修复模式 + 画像学习（非阻塞，失败仅日志）=====
+    try:
+        from app.services.pm.feature_config import is_pm_feature_enabled
+
+        if is_pm_feature_enabled('optional.learning'):
+            from app.services.pm.pm_fix_pattern import learn_fix_pattern
+            from app.services.pm.pm_user_learning import learn_from_decision
+
+            if fix_result == 'success' and fix_action:
+                await learn_fix_pattern(db, diag_type, fix_action, log.id if log else None)
+            await learn_from_decision(db, user_id, diag_type, fix_result, verified)
+    except Exception as _learn_e:
+        logger.debug(f'[PM-Learning] 学习副作用失败（非阻塞）: {_learn_e}')
 
     return {
         'type': diag_type,
