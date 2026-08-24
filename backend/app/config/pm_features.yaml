@@ -87,6 +87,14 @@ features:
       dedup_hours: 1          # 同项目同类型未解决预警去重窗口
       persist_suggestions: true  # 是否将主动建议也写入诊断面板
 
+    companion:
+      enabled: false
+      description: "智能创作陪伴（苏格拉底引导 + 家教分层反馈 + 百科知识 + 秘书贴心简报）"
+      trigger: "on_demand"
+      token_cost: "low"
+      socratic_levels: 3          # 引导提问层数（现象→原因→方案）
+      tutor_tiers: ["principle", "hint", "example"]  # 家教分层反馈递进
+
 
   # ============================================================================
   # 批处理功能（离线执行，降低在线负载）

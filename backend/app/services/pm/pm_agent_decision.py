@@ -103,6 +103,21 @@ from app.services.pm.pm_decision_verify import _execute_and_verify  # noqa: E402
 # =============================================================================
 
 
+async def _maybe_socratic_redirect(db, issue, project_id, user_id, diag_type, severity):
+    """苏格拉底引导拦截（companion 可选功能，默认关闭）。
+
+    命中引导规则时返回 decision='guide' 的结果字典（与 manual/skip 短路同形状），
+    交由用户逐步作答；未命中 / 功能关闭 / 异常时返回 None，主链路行为不变。
+    """
+    try:
+        from app.services.companion.socratic import socratic_redirect_if_needed
+
+        return await socratic_redirect_if_needed(db, issue, project_id, user_id, diag_type, severity)
+    except Exception as e:
+        logger.warning(f'[PM-Agent] 苏格拉底引导拦截失败(跳过): {e}')
+        return None
+
+
 async def _decide_action(
     db,
     issue: dict[str, Any],
@@ -641,6 +656,11 @@ async def diagnose_and_fix(
         logger.debug(f'[PM-Agent 目标监控] 记录目标失败（非阻塞）: {goal_e}')
 
     logger.info(f'[PM-Agent 决策] 开始处理: type={diag_type} severity={severity}')
+
+    # ===== 阶段 0：苏格拉底引导拦截（companion 可选，默认关闭） =====
+    socratic_result = await _maybe_socratic_redirect(db, issue, project_id, user_id, diag_type, severity)
+    if socratic_result is not None:
+        return socratic_result
 
     # ===== 阶段 1：决策 =====
     early_result, decision, decision_reason, is_lower_risk = await _decide_action(
