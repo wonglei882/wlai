@@ -1,0 +1,36 @@
+# Python 字节码 / 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+
+# 运行时产物
+backend/logs/
+backend/data/
+backend/.instance_id
+
+# 环境配置（保留 .env.example 作为模板）
+.env
+.env.local
+.env.*.local
+
+# 虚拟环境 / 打包
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 操作系统
+Thumbs.db
+.DS_Store
+
+# 临时文件
+*.log
+.tmp/

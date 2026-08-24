@@ -1,0 +1,155 @@
+# PM 功能分级启用配置
+# Version: 1.0.0
+# Created: 2026-08-17
+
+features:
+  # ============================================================================
+  # 核心功能（默认启用，不可关闭）
+  # ============================================================================
+  core:
+    inspection:
+      enabled: true
+      description: "PM 巡检核心功能"
+      interval_minutes: 4320  # 3 天一次（3*24*60=4320 分钟）
+      dimensions:
+        - character_consistency
+        - foreshadow_age
+        - world_rule_drift
+      # outline_drift 已移除：无实际修复路径，扫描仅写诊断日志属空转
+      # _fix_outline_drift handler 仍保留供手动 API 调用
+
+    repair:
+      enabled: true
+      description: "PM 修复闭环"
+      auto_fix: true
+      verify: true
+
+    feedback:
+      enabled: true
+      description: "用户反馈闭环"
+      user_approval: true
+
+    autonomy_unify:
+      enabled: true
+      description: "自主等级阈值统一：PMAutonomyConfig.level 调制决策阈值；关闭则忽略 DB 配置（行为=advisor_plus 硬编码兼容）"
+
+  # ============================================================================
+  # 辅助功能（按需启用，需用户配置）
+  # ============================================================================
+  optional:
+    auto_tuning:
+      enabled: false
+      description: "自调参（失败时自动调整参数）"
+      trigger: "failure_threshold"
+      threshold: 3
+      cooldown_hours: 24
+      token_cost: "high"
+
+    causal_graph:
+      enabled: false
+      description: "因果图推理（章节创建时自动推理因果链）"
+      trigger: "chapter_created"
+      min_content_length: 200
+      token_cost: "high"
+
+    quality_forecast:
+      enabled: false
+      description: "质量预报（生成前预测质量）"
+      trigger: "before_generation"
+      token_cost: "high"
+
+    ooc_detection:
+      enabled: false
+      description: "OOC 检测（角色行为偏离检测）"
+      trigger: "on_demand"
+      token_cost: "medium"
+
+    long_novel_guardian:
+      enabled: false
+      description: "长篇守护（长篇小说一致性守护）"
+      trigger: "on_demand"
+      token_cost: "medium"
+
+    self_evolution:
+      enabled: false
+      description: "自进化（技能自生长）"
+      trigger: "on_demand"
+      token_cost: "very_high"
+
+    world_drift_llm_fix:
+      enabled: true
+      description: "世界观漂移 LLM 根因修复（更新 world_rules 正文，非仅 hash 对齐）"
+      trigger: "on_world_drift"
+      token_cost: "medium"
+    proactive_reporter:
+      enabled: true
+      description: "主动汇报器（巡检发现问题后生成预警报告，写入前端诊断面板）"
+      dedup_hours: 1          # 同项目同类型未解决预警去重窗口
+      persist_suggestions: true  # 是否将主动建议也写入诊断面板
+
+
+  # ============================================================================
+  # 批处理功能（离线执行，降低在线负载）
+  # ============================================================================
+  batch:
+    high_freq_words:
+      enabled: true
+      description: "高频词扫描（每日凌晨批处理）"
+      schedule: "daily"
+      time: "02:00"
+      token_cost: "low"
+
+    continuity_audit:
+      enabled: true
+      description: "连续性审计（每日凌晨批处理）"
+      schedule: "daily"
+      time: "03:00"
+      token_cost: "low"
+
+# ============================================================================
+# 成本控制
+# ============================================================================
+cost_control:
+  max_tokens_per_day: 100000
+  alert_threshold: 0.8
+  auto_disable_threshold: 1.0
+
+# ============================================================================
+# 性能优化
+# ============================================================================
+performance:
+  scan_timeout_seconds: 300
+  max_issues_per_round: 100
+  parallel_projects: true
+  decompose_threshold: 3       # 问题数超过此值时调用 LLM 排序（避免硬编码）
+  cleanup_every_rounds: 48    # 每 N 轮巡检清理一次历史日志（48 轮 ≈ 24h）
+
+# ============================================================================
+# 世界观冲突检测配置
+# 用于 _verify_world_keywords：检测章节正文是否引入与世界观规则冲突的设定
+# key 为规则关键词（出现在 world_rules 中），value 为冲突标记词列表
+# 项目可按需在 world_rules 中引用这些规则名以启用检测
+# ============================================================================
+worldview_conflict_markers:
+  无魔法:
+    - 魔法
+    - 咒语
+    - 法术
+    - 魔杖
+    - 魔力
+  现实世界:
+    - 穿越
+    - 重生
+    - 系统
+    - 异世界
+    - 修仙
+  修仙世界:
+    - 科技
+    - 枪械
+    - 电脑
+    - 手机
+  现代都市:
+    - 轻功
+    - 内力
+    - 真气
+    - 丹田
