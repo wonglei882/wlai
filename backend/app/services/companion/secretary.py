@@ -23,6 +23,8 @@ _GREETING = {
 }
 
 _TONE_NAMES = {'formal': '正式克制', 'casual': '轻松自然', 'warm': '温暖亲切'}
+# PMUserProfile.preferred_detail_level → 语气（话多/暖 ↔ 话少/克制）
+_DETAIL_TO_TONE = {'high': 'warm', 'medium': 'casual', 'low': 'formal'}
 
 _TIPS = [
     '写不动的时候，把最难写的那段朗读出来。',
@@ -70,16 +72,19 @@ def _pick_tip(topic: str = '') -> str:
                 return body
     except Exception as e:  # noqa: BLE001
         logger.debug('[companion] 小贴士检索失败，用内置: %s', e)
-    return _TIPS[len(_TIPS) % 5] if _TIPS else '记得休息。'
+    # 按小时轮换，避免每天同一句
+    return _TIPS[datetime.now().hour % len(_TIPS)] if _TIPS else '记得休息。'
 
 
 def _tone_for(profile: Any) -> str:
-    """根据用户画像选语气。"""
+    """根据用户画像的详细度偏好映射语气。"""
+    pref = 'medium'
     try:
         pref = (profile.preferred_detail_level or 'medium')
     except AttributeError:
-        pref = 'medium'
-    return _TONE_NAMES.get(pref, _TONE_NAMES['warm'])
+        pass
+    tone_key = _DETAIL_TO_TONE.get(pref, 'casual')
+    return _TONE_NAMES.get(tone_key, _TONE_NAMES['casual'])
 
 
 def compose_daily_briefing(

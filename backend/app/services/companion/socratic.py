@@ -8,8 +8,8 @@ PM 主链路完全不受影响。
 
 引导命中规则（全部满足才拦截）：
 1. 功能开关 optional.companion 开启
-2. 问题类型在白名单引导表内
-3. 严重度不是 critical / high（严重问题直接修复，不做教学）
+2. 问题类型在白名单引导表内（真实巡检类型带 pm_agent_ 前缀，查表前自动归一化）
+3. 严重度不是 critical（严重问题直接修复，不做教学）
 4. 用户水平不是 expert（专家不需要被提问）
 """
 
@@ -96,6 +96,30 @@ _GUIDABLE_TYPES: dict[str, dict] = {
             '哪句台词可以改成「动作+短句」，让它更像真人说话？',
         ],
     },
+    'character_jump': {
+        'topic': '角色位置跳变',
+        'levels': [
+            '这个角色上一场景结束时在哪里？本场景又从哪里开始？',
+            '中间这段路（或时间）发生的事，读者需要看到吗？',
+            '如果补一拍过渡，你希望读者注意到什么？',
+        ],
+    },
+    'outline_drift': {
+        'topic': '大纲漂移',
+        'levels': [
+            '正文已经偏离大纲，最先「脱轨」的是哪一处情节？',
+            '这次偏离，是角色自己的选择，还是写作时的顺手为之？',
+            '你更想让大纲跟随故事，还是让故事回到大纲？为什么？',
+        ],
+    },
+    'paragraph_too_long': {
+        'topic': '段落过长',
+        'levels': [
+            '这一长段里，读者最需要抓住的核心信息是哪一个？',
+            '如果把段落按「一个焦点一层意思」拆开，哪里该起新段？',
+            '拆分后哪一句适合单独成段，制造一点呼吸感？',
+        ],
+    },
 }
 
 _DEFAULT_CHAIN: dict = {
@@ -107,8 +131,11 @@ _DEFAULT_CHAIN: dict = {
     ],
 }
 
-# 严重度排除：critical/high 的问题直接修复，不做引导
-_NON_GUIDE_SEVERITIES = {'critical', 'high'}
+# 别名：真实巡检类型 pm_agent_world_drift 归一化为 world_drift，与 world_rule_drift 同链
+_GUIDABLE_TYPES['world_drift'] = _GUIDABLE_TYPES['world_rule_drift']
+
+# 严重度排除：critical 的问题直接修复，不做引导（枚举: critical / warning / info）
+_NON_GUIDE_SEVERITIES = {'critical'}
 # 专家级用户不需要引导
 _NON_GUIDE_LEVELS = {'expert'}
 
@@ -116,9 +143,15 @@ _NON_GUIDE_LEVELS = {'expert'}
 # =============================================================================
 # 引导规则判断
 # =============================================================================
+def _normalize_type(issue_type: str) -> str:
+    """把真实巡检类型归一化为白名单 key（去除 pm_agent_ 前缀）。"""
+    itype = (issue_type or '').strip()
+    return itype[len('pm_agent_'):] if itype.startswith('pm_agent_') else itype
+
+
 def resolve_chain(diag_type: str) -> dict | None:
-    """按诊断类型取引导链；不在白名单返回 None。"""
-    return _GUIDABLE_TYPES.get(diag_type)
+    """按诊断类型取引导链（自动归一化 pm_agent_* 前缀）；不在白名单返回 None。"""
+    return _GUIDABLE_TYPES.get(_normalize_type(diag_type))
 
 
 def should_guide(

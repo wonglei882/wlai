@@ -154,8 +154,11 @@ def _make_example(issue: dict, tier: str) -> str:
     itype = issue.get('type', '')
     hint = {
         'character_location_jump': '补一拍过渡：先交代离开，再交代抵达，中间留一行感受。',
+        'character_jump': '补一拍过渡：先交代离开，再交代抵达，中间留一行感受。',
         'dialogue_quality': '把「他很生气地说……吗？」改成动作+短句：他捏紧杯沿，一字一字地说：「……」。',
         'pacing': '在长句堆里插一个单句段落，让读者有呼吸的缝隙。',
+        'paragraph_too_long': '把最长的一段按「一个焦点一层意思」拆开，给最重的句子单独一段。',
+        'outline_drift': '先写下「正文实际发生了什么」与「大纲原定发生了什么」，再决定谁跟随谁。',
     }.get(itype, '示范：把这个念头用最直白的一句话写出来，再决定保留还是修剪。')
     return hint
 
@@ -168,9 +171,3 @@ def compose_encouragement(kind: str = 'fix_success', experience_level: str = 'be
     pool = _ENC_POOL.get(kind, _ENC_POOL['guidance'])
     idx = 0 if experience_level == 'beginner' else (1 if experience_level == 'intermediate' else 2)
     return pool[idx % len(pool)]
-
-
-def compose_milestone_message(milestone: str = '') -> str:
-    """里程碑祝贺（配合 secretary 使用）。"""
-    base = _ENC_POOL['milestone'][1]
-    return f'🎉 {milestone or "里程碑达成"}！{base}'

@@ -1,8 +1,16 @@
 # 智能创作陪伴蓝图 —「苏格拉底 · 家教 · 百科全书 · 秘书」
 
-> 版本：1.0.0 ｜ 2026-08-24 ｜ 落地范围：MuMuPM-Project（PM Agent 后端模块）
-> **状态：✅ 已执行完成** ｜ 验证：demo 四维输出正常、smoke 回归 48/48、lint 0 错误
+> 版本：1.0.1 ｜ 2026-08-24 ｜ 落地范围：MuMuPM-Project（PM Agent 后端模块）
+> **状态：✅ 已执行完成并通过自验收** ｜ 验证：demo 四维输出正常、smoke 回归 48/48、lint 0 错误、验收专项 25 项全过
 > 交付：companion 包（6 模块）+ 种子百科（6 条目）+ 陪伴 API + 演示脚本 + 决策链路引导拦截
+
+### 自验收修复记录（v1.0.1）
+1. **白名单归一化**：真实巡检 issue_type 带 `pm_agent_` 前缀（`pm_agent_foreshadow_stale` 等），查表前自动归一化；补齐 `world_drift`（映射 `world_rule_drift` 链）、`outline_drift`、`paragraph_too_long`、`character_jump` 链。
+2. **严重度排除修正**：severity 枚举为 critical/warning/info，`_NON_GUIDE_SEVERITIES` 修正为 `{'critical'}`（原含不存在的 `'high'`）。
+3. **秘书语气映射修复**：`preferred_detail_level`（high/medium/low）→ 语气（温暖亲切/轻松自然/正式克制），原实现恒回退 warm。
+4. **小贴士轮换**：按小时轮换，不再恒取第一条。
+5. **tutor 清理**：删除冗余带 emoji 的 `compose_milestone_message`（由 secretary 权威实现）；示例层补 `paragraph_too_long`/`outline_drift`/`character_jump`。
+6. **兼容性确认**：guide 结果与 manual/skip 短路同形状（decision/fix_result 无 DB 约束，可写），decisions 消费点仅读 `fix_attempted`/`verified` 计数，拦截短路安全。
 
 ## 一、蓝图定位
 
