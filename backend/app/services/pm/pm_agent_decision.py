@@ -61,7 +61,6 @@ from app.services.pm.pm_decision_state import (  # noqa: E402, F401
 # =============================================================================
 from app.services.pm.pm_decision_helpers import (  # noqa: E402, F401
     _decompose_repair_priority,
-    _rule_based_sort,
     _failure_status,
     _log_decision,
     _log_deduped_decision,

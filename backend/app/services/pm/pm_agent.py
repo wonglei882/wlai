@@ -34,7 +34,7 @@ from app.logger import get_logger
 from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.feature_config import pm_feature_config
 from app.services.pm.pm_agent_decision import classify_severity_by_type, diagnose_and_fix
-from app.services.pm.pm_runtime_state import PMRuntimeState, runtime_state
+from app.services.pm.pm_runtime_state import runtime_state
 
 # 扫描函数与 SCAN_REGISTRY 注册表已移至 pm_scanners.py（控制文件行数 < 800）
 # 通过 import 触发 pm_scanners 模块加载，使其 @scan_dimension 装饰器填充 SCAN_REGISTRY
@@ -72,8 +72,8 @@ _PROACTIVE_ENABLED = bool(_proactive_cfg.get('enabled', True))
 _PROACTIVE_DEDUP_HOURS = int(_proactive_cfg.get('dedup_hours', 1))
 _PROACTIVE_PERSIST_SUGGESTIONS = bool(_proactive_cfg.get('persist_suggestions', True))
 
-# 巡检循环异常最大自动重启次数（崩溃保护上限）
-_MAX_CRASH_RESTART = 3
+# 巡检循环异常最大自动重启次数（崩溃保护上限，来自 pm_features.yaml: performance.max_crash_restart）
+_MAX_CRASH_RESTART = int(_perf_cfg.get('max_crash_restart', 3))
 # P0.4: 连续空闲 N 轮后降频倍数（2 → 间隔 × 4 = 30min → 2h）
 # 阈值/倍率来自 pm_features.yaml: performance.idle_*
 IDLE_THRESHOLD_ROUNDS = _perf_cfg.get('idle_threshold_rounds', 2)
