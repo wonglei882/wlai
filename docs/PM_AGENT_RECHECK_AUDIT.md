@@ -126,10 +126,10 @@ from app.services.pm.quality_scorer import PMQualityScorerV2 as PMQualityScorer 
 
 | 优先级 | 债务项 | 现状 |
 |---|---|---|
-| P1 | 5 个超长文件（非 pm 核心域） | 未动，建议下一轮处理 `event_bus_listeners`(768) |
-| P2 | 三个入口脚本去重 | 未动 |
-| P2 | provider 错误处理逐家校对（openai/anthropic/gemini） | 未动 |
-| P2 | DB 集成测试 + scanner 诊断器测试 | 未动（需测试库） |
+| P1 | 5 个超长文件（非 pm 核心域） | 部分清偿：`event_bus_listeners`(768) 已拆为 4 领域模块（commit `0f8e7c1`） |
+| P2 | 三个入口脚本去重 | 已清偿：统一 `pm_inspection_runner.py`，三旧入口转薄壳（commit `0f8e7c1`） |
+| P2 | provider 错误处理逐家校对（openai/anthropic/gemini） | 已清偿：anthropic/gemini 补齐递归深度保护，对齐 openai（commit `0f8e7c1`） |
+| P2 | DB 集成测试 + scanner 诊断器测试 | 部分清偿：scanner 纯逻辑测试已补（`test_scanner_utils.py`，+12 cases）；DB 集成测试仍需测试库基建 |
 
 ---
 
@@ -159,3 +159,42 @@ from app.services.pm.quality_scorer import PMQualityScorerV2 as PMQualityScorer 
 4. **风险点**：`__init__.py` 与 `_rule_based_sort` 死代码删除前已 grep 确认全库 0 消费者，删除后 65 测试通过无回归。
 
 *评估方法说明：全部量化数据来自本轮实机静态扫描（pyflakes 全库）与全量 pytest，非估算。*
+
+---
+
+## 六-B、§六 债务清偿执行记录（2026-08-25，commit `0f8e7c1`）
+
+### P1｜`event_bus_listeners`(768) 拆分 ✅
+
+按领域拆为 4 个单一职责模块 + 主文件薄壳：
+
+| 模块 | 行数 | 职责 |
+|---|---|---|
+| `event_bus_listeners.py` | ~240 | 6 个监听器薄壳 + 注册函数 + 兼容再导出 |
+| `event_bus_listeners_analysis.py` | ~55 | 章节生成后自动分析 |
+| `event_bus_listeners_consistency.py` | ~120 | 一致性检查 + 延迟调度 + 即时巡检 |
+| `event_bus_listeners_foreshadow.py` | ~175 | 伏笔状态自动回写/回收 |
+| `event_bus_listeners_relationships.py` | ~165 | 关系网自动更新 |
+
+- 主文件保留 `_auto_run_consistency_check` 兼容再导出（`pm_fix_executors.py` 消费，pyflakes 1 条 F401 为设计保留）
+- 顺带修复**原参序 bug**：`pm_fix_executors.py` 调用 `_auto_run_consistency_check(project_id, chapter_id, user_id, db)` 与签名 `(db, chapter_id, project_id, user_id)` 错位，已修正并加注释防回退
+
+### P2｜三个入口脚本去重 ✅
+
+`run_pm_inspection.py` / `pm_runner.py` / `pm_inspector_cron.py` 逻辑完全重叠（同表查询 + 同巡检函数 + 同阈值分级），合并为统一入口 `pm_inspection_runner.py`：
+- 参数化 `--log-dir`（默认 backend/logs，`pm_runner` 传 `/app/logs`，cron 传 `""` 仅控制台）
+- 三旧文件保留为薄壳转发（兼容既有 cron / docker exec 引用路径）
+
+### P2｜provider 错误处理逐家校对 ✅
+
+校对发现 anthropic/gemini 与 openai 的 `_generate_with_tools` 不一致：
+- **openai（基准）**：递归时 `tools=None` + `recursion_depth` 上限 2 层
+- **anthropic/gemini（修复前）**：递归仍传 `tools`，且无深度保护 → 存在无限工具循环风险
+- 修复：三家对齐 `recursion_depth: int = 0` + `max_depth = 2` + 递归禁传工具
+
+### P2｜DB 集成测试 + scanner 诊断器测试 ⏳ 部分
+
+- ✅ 新增 `tests/test_scanner_utils.py`（+12 cases）：`_safe_json_loads` / `_extract_chapter_from_range` / `SCAN_REGISTRY` 完整性守卫
+- ⏳ DB 集成测试：仍需要测试库基建（当前 conftest 无测试库 fixture），保留待办
+
+**执行后门禁**：pytest **77 passed**（+12）；改动文件 pyflakes 全部 clean（仅 event_bus_listeners 1 条设计保留的兼容再导出）。

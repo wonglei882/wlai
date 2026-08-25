@@ -260,8 +260,9 @@ async def _fix_quality_low(issue: dict[str, Any], project_id: str, user_id: str,
     chapter_id = chapter_id_row[0]
 
     # 触发一致性检查（会自动修复角色/世界观问题）
+    # 注：签名 (db, chapter_id, project_id, user_id)，勿调换顺序
     try:
-        await _auto_run_consistency_check(project_id, chapter_id, user_id, db)
+        await _auto_run_consistency_check(db, chapter_id, project_id, user_id)
     except Exception as e:
         logger.warning(f'[PM-Agent] 质量分修复 - 一致性检查失败: {e}')
 

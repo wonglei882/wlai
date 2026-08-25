@@ -122,15 +122,15 @@ class AnthropicProvider(BaseAIProvider):
                         final_prompt = f'{prompt}\n\n{tool_context}\n\n请基于以上工具查询结果，给出完整详细的回答。'
                         final_messages = [{'role': 'user', 'content': final_prompt}]
 
-                        # 递归调用生成最终结果
+                        # 递归调用生成最终结果（不传tools，禁止AI继续调用工具）
                         async for final_chunk in self._generate_with_tools(
                             final_messages,
                             model,
                             temperature,
                             max_tokens,
                             system_prompt,
-                            tools,
-                            user_id,
+                            tools=None,
+                            user_id=user_id,
                             stop=stop,
                         ):
                             yield final_chunk
@@ -175,9 +175,33 @@ class AnthropicProvider(BaseAIProvider):
         system_prompt: str | None = None,
         tools: list = None,
         user_id: str | None = None,
+        recursion_depth: int = 0,
         stop: list[str] | None = None,
     ) -> AsyncGenerator[str, None]:
         """辅助方法：带工具的流式生成"""
+        max_depth = 2  # 最多递归2层，防止无限工具循环
+
+        if recursion_depth >= max_depth:
+            # 达到递归上限，禁止使用工具，强制AI输出文本
+            async for chunk in self.client.chat_completion_stream(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+                stop_sequences=stop,
+            ):
+                if isinstance(chunk, dict):
+                    if chunk.get('usage'):
+                        yield {'usage': chunk.get('usage')}
+                    if chunk.get('finish_reason'):
+                        yield {'finish_reason': chunk.get('finish_reason')}
+                    if chunk.get('content'):
+                        yield chunk['content']
+                else:
+                    yield chunk
+            return
+
         tool_calls_buffer = []
 
         async for chunk in self.client.chat_completion_stream(
@@ -204,14 +228,16 @@ class AnthropicProvider(BaseAIProvider):
 
                     messages.append({'role': 'user', 'content': f'{tool_context}\n\n请基于以上工具查询结果，给出完整详细的回答。'})
 
+                    # 递归时不再传递工具，防止无限工具循环
                     async for final_chunk in self._generate_with_tools(
                         messages,
                         model,
                         temperature,
                         max_tokens,
                         system_prompt,
-                        tools,
-                        user_id,
+                        tools=None,
+                        user_id=user_id,
+                        recursion_depth=recursion_depth + 1,
                         stop=stop,
                     ):
                         yield final_chunk
