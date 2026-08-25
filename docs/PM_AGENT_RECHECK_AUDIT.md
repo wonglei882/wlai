@@ -129,7 +129,7 @@ from app.services.pm.quality_scorer import PMQualityScorerV2 as PMQualityScorer 
 | P1 | 5 个超长文件（非 pm 核心域） | 部分清偿：`event_bus_listeners`(768) 已拆为 4 领域模块（commit `0f8e7c1`） |
 | P2 | 三个入口脚本去重 | 已清偿：统一 `pm_inspection_runner.py`，三旧入口转薄壳（commit `0f8e7c1`） |
 | P2 | provider 错误处理逐家校对（openai/anthropic/gemini） | 已清偿：anthropic/gemini 补齐递归深度保护，对齐 openai（commit `0f8e7c1`） |
-| P2 | DB 集成测试 + scanner 诊断器测试 | 部分清偿：scanner 纯逻辑测试已补（`test_scanner_utils.py`，+12 cases）；DB 集成测试仍需测试库基建 |
+| P2 | DB 集成测试 + scanner 诊断器测试 | 已清偿：scanner 纯逻辑测试（`test_scanner_utils.py`，+12）+ DB 集成测试（`test_pm_scanners_integration.py` 9 cases + `test_pm_proactive_inspection_integration.py` 7 cases，sqlite 内存库基建） |
 
 ---
 
@@ -198,3 +198,28 @@ from app.services.pm.quality_scorer import PMQualityScorerV2 as PMQualityScorer 
 - ⏳ DB 集成测试：仍需要测试库基建（当前 conftest 无测试库 fixture），保留待办
 
 **执行后门禁**：pytest **77 passed**（+12）；改动文件 pyflakes 全部 clean（仅 event_bus_listeners 1 条设计保留的兼容再导出）。
+
+---
+
+## 六-C、DB 集成测试清偿记录（2026-08-25，commit 待提交）
+
+### 测试库基建
+
+`tests/conftest.py` 新增 `db_session` fixture：
+- `sqlite+aiosqlite://` 内存库 + `StaticPool`（单连接防 :memory: 数据丢失）
+- `__import__('app.models')` 注册全部模型 → `Base.metadata.create_all` 建表
+- 历史遗留兼容：`characters.main_career_id` 引用无模型的 `careers` 表，注册占位表供外键解析
+- `pytest.ini`：`asyncio_mode = auto`（pytest-asyncio 1.3.0）
+
+### 新增集成测试（+16 cases）
+
+| 文件 | 覆盖 |
+|---|---|
+| `test_pm_scanners_integration.py`（9） | `_scan_character_consistency` 硬阈值跳变/无跳变；`_scan_foreshadow_age` 超龄/新鲜；`_scan_world_rule_drift` hash 漂移>50%/相同；`_scan_paragraph_format` 超长段落/正常；`_write_diagnostic_from_scan` upsert |
+| `test_pm_proactive_inspection_integration.py`（7） | 健康项目 10.0；低质量 critical→3.0 / warning→5.0；失败模式→7.0；world drift→8.0；多问题取最低分；项目隔离 |
+
+### 验证
+
+- pytest：**93 passed**（+16 集成）
+- 新增文件 pyflakes 全部 clean
+- 测试全部走真实 sqlite 内存库 + 真实模型写入/查询，覆盖巡检阈值分级、扫描器查库逻辑、诊断 upsert 三块此前无自动化覆盖的链路
