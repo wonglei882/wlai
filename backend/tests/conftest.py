@@ -32,13 +32,6 @@ async def db_session():
 
     __import__('app.models')  # 触发所有模型类注册
 
-    # 历史遗留：characters.main_career_id 引用 careers.id，但 careers 无模型类。
-    # 注册占位表以便 create_all 能解析该外键（测试不涉及 careers 数据）。
-    if 'careers' not in Base.metadata.tables:
-        from sqlalchemy import Column, String, Table
-
-        Table('careers', Base.metadata, Column('id', String(36), primary_key=True))
-
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

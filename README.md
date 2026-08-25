@@ -9,10 +9,13 @@ D:\ai\MuMuPM-Project\
 ├── backend\
 │   ├── requirements.txt          # Python 依赖
 │   ├── .env.example              # 环境变量模板
+│   ├── alembic.ini               # Alembic 迁移配置
+│   ├── migrations\               # 数据库迁移（含初始 schema）
 │   ├── pm_runner.py              # PM 主动巡检 runner（对所有项目巡检并记日志）
 │   ├── run_pm_inspection.py      # 单次巡检入口
 │   ├── pm_inspector_cron.py      # 巡检定时任务
 │   ├── app\
+│   │   ├── main.py               # FastAPI 应用入口（独立部署）
 │   │   ├── config.py             # Settings（环境配置）
 │   │   ├── database.py           # SQLAlchemy 异步数据库
 │   │   ├── logger.py             # 日志
@@ -74,10 +77,32 @@ D:\ai\MuMuPM-Project\
 
 ## 说明
 
-- **复制范围**：仅 PM 后端模块（services/pm + 相关 api/models/services 依赖）。
-- **验证状态**：PM 核心 33 个模块 + AI 服务链 + agent 工具集 + 4 个 PM API 已通过 import 冒烟测试。
-- **未复制**：前端、`main.py` 应用入口、数据库迁移（alembic）、测试。
-- **运行前提**：需要 PostgreSQL（按 `.env.example` 配置 `DATABASE_URL`），以及 AI 模型 API key。
+- **复制范围**：PM 后端模块（services/pm + 相关 api/models/services 依赖），独立部署所需的入口/迁移/桩模块已补齐。
+- **验证状态**：`check_deps.py` 缺失模块为 0；`smoke_import.py` 27/27 通过；pytest **119 通过**（含 sqlite 集成测试）。
+- **独立部署能力**：
+  - FastAPI 应用入口 `app/main.py`（含全部 5 组 API 路由 + `/health`）
+  - Alembic 数据库迁移（`migrations/`，初始 schema 可建出全部 35 张表）
+  - 12 个原懒加载缺失模块已补齐（`command_executor`、`quality_forecast`、`mcp`、`causal_graph`、`redis_client` 等，独立部署下安全降级）
+  - 历史遗留的 `characters.main_career_id → careers` 外键已移除
+- **未复制**：前端（本仓库为后端服务）。
+- **运行前提**：PostgreSQL（按 `.env.example` 配置 `DATABASE_URL`）、AI 模型 API key；Redis 可选（未配置时自动降级为文件持久化）。
+
+## 独立部署
+
+```bash
+cd backend
+pip install -r requirements.txt
+cp .env.example .env               # 按需修改 DATABASE_URL / AI_API_KEY
+
+# 初始化数据库（首次部署）
+alembic upgrade head
+
+# 启动 API 服务
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# 或仅运行 PM 巡检（无需 Web 服务）
+python run_pm_inspection.py --project-id <PROJECT_ID>
+```
 
 ## 验证脚本
 
@@ -86,4 +111,5 @@ cd backend
 python ../scripts/smoke_import.py    # PM 核心模块导入测试
 python ../scripts/smoke_import2.py   # AI/agent/api 模块导入测试
 python ../scripts/check_deps.py      # 静态检查缺失的 app.* 依赖
+python -m pytest tests               # 全量测试（119 个）
 ```

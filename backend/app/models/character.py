@@ -50,7 +50,8 @@ class Character(Base):
     state_updated_chapter = Column(Integer, comment='心理状态最后更新的章节号')
 
     # 职业相关字段（冗余字段，用于提升查询性能）
-    main_career_id = Column(String(36), ForeignKey('careers.id', ondelete='SET NULL'), comment='主职业ID')
+    # 注意：历史版本曾外键引用 careers.id，careers 表未随独立项目交付，故仅保留普通列。
+    main_career_id = Column(String(36), comment='主职业ID')
     main_career_stage = Column(Integer, comment='主职业当前阶段')
     sub_careers = Column(Text, comment='副职业列表(JSON): [{"career_id": "xxx", "stage": 3}, ...]')
     screen_time_weight = Column(Float, default=1.0, comment='戏份权重(0.0~1.0)')

@@ -6,6 +6,7 @@
 """
 from app.models.base import Base
 
+from app.models.analysis_task import AnalysisTask
 from app.models.character import Character
 from app.models.chapter import Chapter
 from app.models.foreshadow import Foreshadow
@@ -39,6 +40,7 @@ from app.models.story_line import StoryLine
 
 __all__ = [
     'Base',
+    'AnalysisTask',
     'Character',
     'Chapter',
     'Foreshadow',

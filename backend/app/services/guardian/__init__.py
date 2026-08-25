@@ -23,3 +23,5 @@ try:
     from app.services.guardian.ooc_detector import OOCDetector  # noqa: F401
 except ImportError:
     from app.services.guardian.ooc_detector import OOCDetector  # noqa: F401
+
+from app.services.guardian import causal_graph  # noqa: F401  # 独立部署因果图服务
