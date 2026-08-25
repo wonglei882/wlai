@@ -133,11 +133,29 @@ from app.services.pm.quality_scorer import PMQualityScorerV2 as PMQualityScorer 
 
 ---
 
+## 六-A、§五 残留清偿执行记录（2026-08-25，commit `5ec943a`）
+
+§五 所列 4 项残留全部执行完毕：
+
+| 项 | 处置 | 验证 |
+|---|---|---|
+| `__init__.py` 7 个死再导出（P2） | 删除，docstring 注明清理原因 | 全库 grep 0 消费者 |
+| `_rule_based_sort` 再导出（P3） | 从 `pm_agent_decision` 删除 | 消费者核对：仅测试经 `pm_decision_helpers` 直达 |
+| `pm_agent.py:37` 冗余导入（P3） | 精简为 `import runtime_state` | pyflakes F401 消除 |
+| `_MAX_CRASH_RESTART`（P3） | 配置化入 yaml `performance.max_crash_restart` | import 冒烟 = 3 |
+
+**执行后门禁**：
+- pytest：**65 passed**（无回归）
+- pyflakes `app/services/pm/`：由 13 条降至 **2 条**，且均为 §五 判定"保留正确"的有消费者再导出（`classify_severity_by_type` / `_decompose_repair_priority`，实际由 `pm_agent.py:36,173` 消费，非死代码）。
+- import 冒烟：`app.services.pm` / `pm_agent` / `pm_agent_decision` 正常加载。
+
+---
+
 ## 七、结论
 
 1. **五项优化全部真实落地**，且有运行态与测试证据支撑，非纸面改动。
 2. **结构性问题清零**：全局状态、公共边界、死代码、魔法数字、指标盲区五项 P0/P1 债务已解除。
-3. **剩余问题全部为低危打磨**：7 个死再导出 + 2 个多余导入 + 1 个常量，约 10 分钟工作量。
-4. **风险点**：`__init__.py` 与 `_rule_based_sort` 死代码若被未来外部脚本依赖，删除前需再 grep 一次确认（本报告已确认当前无消费者）。
+3. **§五 残留已全部清偿**（commit `5ec943a`），pyflakes 仅剩 2 条有消费者再导出（设计保留）。
+4. **风险点**：`__init__.py` 与 `_rule_based_sort` 死代码删除前已 grep 确认全库 0 消费者，删除后 65 测试通过无回归。
 
 *评估方法说明：全部量化数据来自本轮实机静态扫描（pyflakes 全库）与全量 pytest，非估算。*
