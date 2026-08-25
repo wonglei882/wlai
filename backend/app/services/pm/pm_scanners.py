@@ -12,6 +12,7 @@
 """
 
 import json
+import math
 from typing import Any
 
 from sqlalchemy import select, func, text
@@ -22,6 +23,30 @@ from app.services.pm.pm_consistency_guardian import PMConsistencyGuardian
 from app.services.pm.scan_support import has_unresolved_diagnostic, load_character_names
 
 logger = get_logger(__name__)
+
+
+def _safe_json_loads(raw) -> dict[str, Any]:
+    """兼容 str/JSON 与已解析 dict 两种存储形态的解析，失败回退空 dict。"""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw:
+        try:
+            return json.loads(raw)
+        except Exception:  # noqa: S110 -- 解析失败属数据脏数据，静默跳过该行
+            return {}
+    return {}
+
+
+# 伏笔类型 → 指数衰减 lambda（模块级常量，避免每行循环重复构建）
+# identity 0.12（回收窗口约8章）/ mystery 0.10 / event 0.08 / relationship、item 0.06
+_FORESHADOW_LAMBDA_BY_CATEGORY = {
+    'identity': 0.12,
+    'mystery': 0.10,
+    'event': 0.08,
+    'relationship': 0.06,
+    'item': 0.06,
+}
+_FORESHADOW_LAMBDA_DEFAULT = 0.10
 
 # 巡检只扫最近 N 个章节（避免全量扫描耗时过长）
 RECENT_CHAPTER_LIMIT = 20
@@ -89,8 +114,6 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
     - 样本量 < 5：退回硬阈值（相邻章 location 不同即报）
     - Z > Z_SCORE_THRESHOLD 视为异常跳变（约 95% 置信）
     """
-    import math
-
     issues = []
     try:
         result = await db.execute(
@@ -109,12 +132,7 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
         # 收集角色历史 location 频次（用于 Z-score）
         char_location_hist: dict[str, dict[str, int]] = {}  # char -> {loc: count}
         for row in rows:
-            cs_raw = row[1] or '{}'
-            try:
-                cs = json.loads(cs_raw) if isinstance(cs_raw, str) else cs_raw
-            except Exception as parse_err:
-                logger.debug(f'[PM-Agent] 跳过无法解析的角色状态 project={project_id}: {parse_err}')
-                continue
+            cs = _safe_json_loads(row[1])
             for name, state in cs.items():
                 loc = state.get('location', '') if isinstance(state, dict) else ''
                 if loc:
@@ -124,13 +142,7 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
         # 相邻章对比
         for i in range(len(rows) - 1):
             ch1, ch2 = rows[i][0], rows[i + 1][0]
-            cs1_raw, cs2_raw = rows[i][1] or '{}', rows[i + 1][1] or '{}'
-            try:
-                cs1 = json.loads(cs1_raw) if isinstance(cs1_raw, str) else cs1_raw
-                cs2 = json.loads(cs2_raw) if isinstance(cs2_raw, str) else cs2_raw
-            except Exception as parse_err:
-                logger.debug(f'[PM-Agent] 跳过无法解析的相邻章节角色状态 ch1={ch2}: {parse_err}')
-                continue
+            cs1, cs2 = _safe_json_loads(rows[i][1]), _safe_json_loads(rows[i + 1][1])
 
             all_names = set(cs1.keys()) | set(cs2.keys())
             for name in all_names:
@@ -234,20 +246,9 @@ async def _scan_foreshadow_age(db: AsyncSession, project_id: str, user_id: str) 
         )
         for fs in result.scalars().all():
             age = latest_ch - (fs.plant_chapter_number or 0)
-            # P0: 指数衰减紧急度 urgency = 1 - e^(-lambda * age)
-            # lambda 由伏笔类型（category）拟合：无 category → 全局均值 lambda=0.1
-            # 经验值：身世/反转类 lambda=0.12（回收窗口约8章）
-            #         悬念/事件类 lambda=0.08（回收窗口约12章）
-            #         关系/物品类 lambda=0.06（回收窗口约16章）
-            _cat_lambda = {
-                'identity': 0.12,
-                'mystery': 0.10,
-                'event': 0.08,
-                'relationship': 0.06,
-                'item': 0.06,
-            }
-            _lambda = _cat_lambda.get(fs.category or '', 0.10)
-            urgency_score = 1.0 - (2.71828 ** (-_lambda * age))
+            # P0: 指数衰减紧急度 urgency = 1 - e^(-lambda * age)，lambda 按伏笔类型拟合
+            _lambda = _FORESHADOW_LAMBDA_BY_CATEGORY.get(fs.category or '', _FORESHADOW_LAMBDA_DEFAULT)
+            urgency_score = 1.0 - math.exp(-_lambda * age)
             # 紧急度分级：0.5 以上中度关注，0.8 以上高优先级
             if urgency_score < 0.3:
                 continue  # 未达到预警阈值，跳过
@@ -331,11 +332,8 @@ async def _scan_world_rule_drift(db: AsyncSession, project_id: str, user_id: str
         prev_ch = None
         prev_appeared = None
         for row in rows:
-            ch, ws_raw = row[0], row[1] or '{}'
-            try:
-                ws = json.loads(ws_raw) if isinstance(ws_raw, str) else ws_raw
-            except Exception:
-                ws = {}
+            ch, ws_raw = row[0], row[1]
+            ws = _safe_json_loads(ws_raw)
             curr_hash = ws.get('_world_rules_hash', '')
             curr_appeared = ws.get('_appeared_rules', [])
 

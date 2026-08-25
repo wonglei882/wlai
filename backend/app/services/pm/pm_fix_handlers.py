@@ -8,10 +8,11 @@
 - 失败分类 / 目标偏离检测 / 实体提取
 """
 
+import json
+import re
 from datetime import datetime
 from typing import Any
 
-import json
 from sqlalchemy import text, select
 
 from app.logger import get_logger
@@ -218,13 +219,11 @@ def _check_goal_drift(original_goal: dict, fix_action: str) -> dict:
     # 实体覆盖度（章节号走正则匹配，防纯数字误判）
     entity_overlap = 0.0
     if original_entities:
-        import re as _re_drift
-
         matched = 0
         for entity in original_entities:
             if entity.startswith('chapter:'):
                 ch_num = entity.split(':')[1]
-                chapter_pattern = _re_drift.compile(rf'第\s*{_re_drift.escape(ch_num)}\s*章|chapter[: ]+{_re_drift.escape(ch_num)}\b')
+                chapter_pattern = re.compile(rf'第\s*{re.escape(ch_num)}\s*章|chapter[: ]+{re.escape(ch_num)}\b')
                 if chapter_pattern.search(fix_action):
                     matched += 1
         entity_overlap = matched / len(original_entities) if original_entities else 0.0
@@ -533,8 +532,6 @@ async def _verify_world_keywords(project_id: str, db) -> tuple[bool, str]:
 
         world_rules = row[0]
         # 提取关键词（简化版：分词 + 过滤停用词）
-        import re
-
         keywords = set(re.findall(r'[\u4e00-\u9fa5]{2,}', world_rules[:500]))
         if not keywords:
             return True, '无法提取关键词'
@@ -683,89 +680,29 @@ async def _verify_quality_fix(issue: dict[str, Any], project_id: str, user_id: s
 
 
 def _register_all_handlers():
-    """注册AllHandlers
+    """注册全部修复 handler。
 
-    Returns:
-        None
+    spec 为 (裸名, pm_agent_ 前缀名, handler, 描述) 元组：
+    扫描器产出带 `pm_agent_` 前缀的 issue_type，而手动巡检与引导复用裸名，
+    因此每种修复都成对注册两个前缀，保证任一入口都能命中。
     """
-    _register_fix_handler(
-        'character_location_jump',
-        _fix_character_location,
-        '角色位置一致性修复',
+    specs = (
+        ('character_location_jump', 'pm_agent_character_jump', _fix_character_location, '角色位置一致性修复'),
+        ('world_rule_drift', 'pm_agent_world_drift', _fix_world_rule_drift, '世界观一致性修复'),
+        ('foreshadow_stale', 'pm_agent_foreshadow_stale', _fix_foreshadow_stale, '伏笔老化处理'),
+        ('quality_score_low', 'pm_agent_quality_score_low', _fix_quality_low, '质量分低一致性检查'),
+        ('paragraph_too_long', 'pm_agent_paragraph_too_long', _fix_paragraph_format, '段落格式重排修复'),
+        # P1: 节奏/情感/冲突薄弱 — 建议型修复（LLM 生成改进建议，不直接改正文）
+        ('rhythm_monotone', None, _fix_rhythm_monotone, '节奏单调改进建议'),
+        ('emotion_flat', None, _fix_emotion_flat, '情感空洞改进建议'),
+        ('conflict_weak', None, _fix_conflict_weak, '冲突薄弱改进建议'),
+        # P2: 大纲漂移修复 — LLM 生成大纲修正建议
+        ('outline_drift', 'pm_agent_outline_drift', _fix_outline_drift, '大纲漂移修正建议'),
     )
-    _register_fix_handler(
-        'pm_agent_character_jump',
-        _fix_character_location,
-        '角色位置一致性修复',
-    )
-    _register_fix_handler(
-        'world_rule_drift',
-        _fix_world_rule_drift,
-        '世界观一致性修复',
-    )
-    _register_fix_handler(
-        'pm_agent_world_drift',
-        _fix_world_rule_drift,
-        '世界观一致性修复',
-    )
-    _register_fix_handler(
-        'foreshadow_stale',
-        _fix_foreshadow_stale,
-        '伏笔老化处理',
-    )
-    _register_fix_handler(
-        'pm_agent_foreshadow_stale',
-        _fix_foreshadow_stale,
-        '伏笔老化处理',
-    )
-    _register_fix_handler(
-        'quality_score_low',
-        _fix_quality_low,
-        '质量分低一致性检查',
-    )
-    _register_fix_handler(
-        'pm_agent_quality_score_low',
-        _fix_quality_low,
-        '质量分低一致性检查',
-    )
-    _register_fix_handler(
-        'paragraph_too_long',
-        _fix_paragraph_format,
-        '段落格式重排修复',
-    )
-    _register_fix_handler(
-        'pm_agent_paragraph_too_long',
-        _fix_paragraph_format,
-        '段落格式重排修复',
-    )
-    # P1: 节奏/情感/冲突薄弱 — 建议型修复（LLM 生成改进建议，不直接改正文）
-    _register_fix_handler(
-        'rhythm_monotone',
-        _fix_rhythm_monotone,
-        '节奏单调改进建议',
-    )
-    _register_fix_handler(
-        'emotion_flat',
-        _fix_emotion_flat,
-        '情感空洞改进建议',
-    )
-    _register_fix_handler(
-        'conflict_weak',
-        _fix_conflict_weak,
-        '冲突薄弱改进建议',
-    )
-    # P2: 大纲漂移修复 — LLM 生成大纲修正建议
-    _register_fix_handler(
-        'outline_drift',
-        _fix_outline_drift,
-        '大纲漂移修正建议',
-    )
-    _register_fix_handler(
-        'pm_agent_outline_drift',
-        _fix_outline_drift,
-        '大纲漂移修正建议',
-    )
-    # P2: outline_drift 已重新启用 — 扫描注册 + 修复 handler + LLM 大纲修正建议路径齐全
+    for bare, prefixed, handler, desc in specs:
+        _register_fix_handler(bare, handler, desc)
+        if prefixed:
+            _register_fix_handler(prefixed, handler, desc)
 
 
 # 注意：不再在模块加载时自动调用 _register_all_handlers()

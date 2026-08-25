@@ -221,12 +221,25 @@ async def _fix_foreshadow_stale(issue: dict[str, Any], project_id: str, user_id:
     return f'{base_msg}\n【回收建议】建议在第{suggested_ch}章回收（LLM 建议未生成，请人工规划回收方案）'
 
 
+def _as_int(value, default: int = 0) -> int:
+    """稳健转 int：兼容 int / 数字字符串 / None，解析失败回退 default。"""
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+    return default
+
+
 async def _fix_quality_low(issue: dict[str, Any], project_id: str, user_id: str, db) -> str:
     """处理质量分低 — 触发 PM 一致性检查 + 自动修复。"""
     from app.services.core.event_bus_listeners import _auto_run_consistency_check
 
-    chapter_number = issue.get('chapter_number', issue.get('total_score', 0)) or 0
-    ch_num = chapter_number if isinstance(chapter_number, int) else 0
+    # 章节号优先取 issue.chapter_number（total_score 是质量分而非章节号，不能兜底）
+    chapter_number = issue.get('chapter_number') or 0
+    ch_num = _as_int(chapter_number)
 
     # 获取实际章节 ID（从 chapter_number 反查，或直接用 chapter_id 参数）
     from app.models.chapter import Chapter
@@ -264,8 +277,8 @@ async def _fix_paragraph_format(issue: dict[str, Any], project_id: str, user_id:
     # 段落格式修复: 对超长段落执行 format_webnovel_paragraphs 重排
     from app.models.chapter import Chapter
 
-    chapter_number = issue.get('chapter_number', 0) or 0
-    ch_num = chapter_number if isinstance(chapter_number, int) else 0
+    chapter_number = issue.get('chapter_number') or 0
+    ch_num = _as_int(chapter_number, 0)
 
     ch_result = await db.execute(
         select(Chapter)
@@ -295,8 +308,8 @@ async def _fix_paragraph_format(issue: dict[str, Any], project_id: str, user_id:
         chapter.word_count = len(formatted)
         await db.flush()
 
-        old_long = len([p for p in content.split('\\n\\n') if len(p.strip()) > 110])
-        new_long = len([p for p in formatted.split('\\n\\n') if len(p.strip()) > 110])
+        old_long = len([p for p in content.split('\n\n') if len(p.strip()) > 110])
+        new_long = len([p for p in formatted.split('\n\n') if len(p.strip()) > 110])
 
         return f'段落格式修复完成（第{ch_num}章）：超长段落 {old_long} -> {new_long}'
     except Exception as e:

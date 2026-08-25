@@ -55,7 +55,6 @@ async def _decompose_repair_priority(
         from app.models.project import Project
         from app.services.ai import AIService
         from app.models.settings import Settings
-        import json
 
         # 取项目信息
         project = await db.get(Project, project_id)
@@ -311,8 +310,6 @@ async def _log_decision(
     fix_details: str = None,
 ) -> PMDecisionLog:
     """将决策结果写入 PMDecisionLog。"""
-    from sqlalchemy import select
-
     # 防重：同一 scan_round + 同类型 + 同章节不重复写入
     if scan_round:
         ch_num_for_check = 0
@@ -379,6 +376,68 @@ async def _log_decision(
     )
     db.add(log)
     return log
+
+
+async def _log_deduped_decision(
+    db,
+    project_id: str,
+    user_id: str,
+    issue: dict[str, Any],
+    severity: str,
+    scan_round: str,
+    original_message: str,
+    decision: str,
+    decision_reason: str,
+    verify_message: str,
+    fix_result: str,
+    window_hours: float = 1.0,
+) -> int | None:
+    """窗口内按 (project_id, diag_type, decision) 去重地落一条决策日志。
+
+    供 manual / cooldown / 重试上限等"短路决策"分支复用（原三分支各写一遍
+    去重查询 + _log_decision + commit/rollback，共约 60 行重复）。
+
+    Returns:
+        PMDecisionLog.id；窗口内已有同型决策或写入失败时返回 None（非阻塞）。
+    """
+    try:
+        dup = await db.execute(
+            select(func.count())
+            .select_from(PMDecisionLog)
+            .where(
+                PMDecisionLog.project_id == project_id,
+                PMDecisionLog.diag_type == issue.get('type', ''),
+                PMDecisionLog.decision == decision,
+                PMDecisionLog.created_at >= datetime.now() - timedelta(hours=window_hours),
+            )
+        )
+        if (dup.scalar_one() or 0) > 0:
+            await db.rollback()
+            return None
+        log = await _log_decision(
+            db=db,
+            project_id=project_id,
+            user_id=user_id,
+            issue=issue,
+            severity=severity,
+            decision=decision,
+            decision_reason=decision_reason,
+            fix_action='',
+            fix_result=fix_result,
+            fix_attempted=False,
+            verified=False,
+            verified_at=None,
+            verify_message=verify_message,
+            scan_round=scan_round,
+            original_message=original_message,
+            fix_details=None,
+        )
+        await db.commit()
+        return log.id if log else None
+    except Exception as log_e:
+        logger.warning(f'[PM-Agent 决策] 记录 {decision} 决策失败（非阻塞）: {log_e}')
+        await db.rollback()
+        return None
 
 
 # =============================================================================

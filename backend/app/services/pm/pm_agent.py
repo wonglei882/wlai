@@ -20,6 +20,7 @@ PM Agent — 后台定期巡检服务
 
 import asyncio
 import math
+import time
 import uuid
 
 from sqlalchemy import select, func, text
@@ -32,7 +33,7 @@ from app.database import get_engine
 from app.logger import get_logger
 from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.feature_config import pm_feature_config
-from app.services.pm.pm_agent_decision import diagnose_and_fix
+from app.services.pm.pm_agent_decision import classify_severity_by_type, diagnose_and_fix
 
 # 扫描函数与 SCAN_REGISTRY 注册表已移至 pm_scanners.py（控制文件行数 < 800）
 # 通过 import 触发 pm_scanners 模块加载，使其 @scan_dimension 装饰器填充 SCAN_REGISTRY
@@ -120,8 +121,6 @@ def _next_sleep_seconds(round_completed: bool, round_issues: int, has_new_chapte
 
 def _infer_severity(issue_type: str) -> str:
     """根据问题类型推断严重性（统一使用 pm_agent_decision.classify_severity_by_type）。"""
-    from app.services.pm.pm_agent_decision import classify_severity_by_type
-
     return classify_severity_by_type(issue_type)
 
 
@@ -606,10 +605,9 @@ async def pm_agent_loop():
                 continue
 
             _round_completed = False  # RC5 防线：异常/超时路径不得计入"干净空闲"降频计数
+            result: dict[str, Any] = {}  # 提前声明：异常/超时路径不再依赖 locals() 探测
             try:
-                import time as _time_round
-
-                _round_started = _time_round.monotonic()
+                _round_started = time.monotonic()
                 result = await asyncio.wait_for(scan_all_projects(), timeout=SCAN_TIMEOUT_SECONDS)
                 total_projects = len(result)
                 total_issues = 0
@@ -632,14 +630,12 @@ async def pm_agent_loop():
                     decisions=total_decisions,
                     fixed=fixed_count,
                     verified=verified_count,
-                    elapsed_s=_time_round.monotonic() - _round_started,
+                    elapsed_s=time.monotonic() - _round_started,
                 )
 
                 # 记录巡检完成时间戳（供健康检查判断循环是否存活）
-                import time as _time_health
-
                 global _last_scan_at
-                _last_scan_at = _time_health.time()
+                _last_scan_at = time.time()
 
                 # 每 CLEANUP_EVERY_ROUNDS 轮（默认 48 ≈ 24h）清理一次历史日志
                 _scan_round_count = getattr(pm_agent_loop, '_round_count', 0) + 1
@@ -660,8 +656,7 @@ async def pm_agent_loop():
             # P0.4: 动态巡检间隔 — 连续无 issue 自动降频，有新章节恢复；异常/超时轮清零计数
             global _last_round_chapter_counts
             total_round_issues = 0
-            # result 可能在 except 分支中未定义（scan_all_projects 抛异常时）
-            _scan_data = result if 'result' in locals() else {}
+            _scan_data = result  # try 前置初值 {}，异常/超时轮安全
             for _pid, _result in _scan_data.items():
                 total_round_issues += sum(len(v) for v in _result.get('issues', {}).values())
 
@@ -750,10 +745,8 @@ async def _supervised_pm_agent_loop():
 
 def get_pm_health() -> dict[str, Any]:
     """获取 PM Agent 健康状态（供 /pm-control/status API 使用）。"""
-    import time as _time_health
-
     task_alive = _pm_agent_task is not None and not _pm_agent_task.done()
-    seconds_since_last_scan = (_time_health.time() - _last_scan_at) if _last_scan_at > 0 else None
+    seconds_since_last_scan = (time.time() - _last_scan_at) if _last_scan_at > 0 else None
 
     # 如果超过 2 轮巡检间隔没有扫描，认为循环不健康
     is_healthy = task_alive

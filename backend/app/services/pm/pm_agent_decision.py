@@ -20,15 +20,12 @@ PM Agent 决策层 — 从"发现警告"升级到"判断+自动修复+验证"
 - 本文件：_decide_action（决策阶段）/ _finalize_decision（收尾）/ diagnose_and_fix（入口）
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 import re
 import contextlib
 
-from sqlalchemy import select, func
-
 from app.logger import get_logger
-from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.pm_fix_handlers import (
     _has_auto_fix,
     FAILED_COOLDOWN_HOURS,
@@ -84,6 +81,7 @@ from app.services.pm.pm_decision_helpers import (  # noqa: E402, F401
     _rule_based_sort,
     _failure_status,
     _log_decision,
+    _log_deduped_decision,
     _compute_decision_score,
     _get_consecutive_failures,
     _get_recent_attempt_count,
@@ -143,40 +141,19 @@ async def _decide_action(
         if failure_state == 'manual':
             # 用户驳回过：转人工，1h 去重
             logger.info(f'[PM-Agent 决策] 转人工: type={diag_type} project={project_id[:8]}（用户驳回过，等待人工处理）')
-            try:
-                dup = await db.execute(
-                    select(func.count())
-                    .select_from(PMDecisionLog)
-                    .where(
-                        PMDecisionLog.project_id == project_id,
-                        PMDecisionLog.diag_type == diag_type,
-                        PMDecisionLog.decision == 'manual',
-                        PMDecisionLog.created_at >= datetime.now() - timedelta(hours=1),
-                    )
-                )
-                if (dup.scalar_one() or 0) == 0:
-                    await _log_decision(
-                        db=db,
-                        project_id=project_id,
-                        user_id=user_id,
-                        issue=issue,
-                        severity=severity,
-                        decision='manual',
-                        decision_reason='用户驳回过同类修复，转人工处理',
-                        fix_action='',
-                        fix_result='skipped',
-                        fix_attempted=False,
-                        verified=False,
-                        verified_at=None,
-                        verify_message='等待人工处理',
-                        scan_round=scan_round,
-                        original_message=original_message,
-                        fix_details=None,
-                    )
-                    await db.commit()
-            except Exception as log_e:
-                logger.warning(f'[PM-Agent 决策] 记录 manual 决策失败（非阻塞）: {log_e}')
-                await db.rollback()
+            await _log_deduped_decision(
+                db=db,
+                project_id=project_id,
+                user_id=user_id,
+                issue=issue,
+                severity=severity,
+                scan_round=scan_round,
+                original_message=original_message,
+                decision='manual',
+                decision_reason='用户驳回过同类修复，转人工处理',
+                verify_message='等待人工处理',
+                fix_result='skipped',
+            )
             result = {
                 'type': diag_type,
                 'severity': severity,
@@ -206,44 +183,19 @@ async def _decide_action(
 
         # cooldown：1h 去重写决策日志，避免历史断层
         logger.debug(f'[PM-Agent 决策] 冷却中: type={diag_type} project={project_id[:8]}')
-        cooldown_log_id = None
-        try:
-            dup = await db.execute(
-                select(func.count())
-                .select_from(PMDecisionLog)
-                .where(
-                    PMDecisionLog.project_id == project_id,
-                    PMDecisionLog.diag_type == diag_type,
-                    PMDecisionLog.decision == 'cooldown',
-                    PMDecisionLog.created_at >= datetime.now() - timedelta(hours=1),
-                )
-            )
-            if (dup.scalar_one() or 0) == 0:
-                cd_log = await _log_decision(
-                    db=db,
-                    project_id=project_id,
-                    user_id=user_id,
-                    issue=issue,
-                    severity=severity,
-                    decision='cooldown',
-                    decision_reason='同类修复失败过，冷却期内跳过本轮',
-                    fix_action='',
-                    fix_result='skipped_cooldown',
-                    fix_attempted=False,
-                    verified=False,
-                    verified_at=None,
-                    verify_message=f'冷却中（同类修复失败过，冷却 {FAILED_COOLDOWN_HOURS}h / 环境类 {ENV_FAILED_COOLDOWN_MINUTES}min）',
-                    scan_round=scan_round,
-                    original_message=original_message,
-                    fix_details=None,
-                )
-                await db.commit()
-                cooldown_log_id = cd_log.id if cd_log else None
-            else:
-                await db.rollback()
-        except Exception as log_e:
-            logger.warning(f'[PM-Agent 决策] 记录 cooldown 决策失败（非阻塞）: {log_e}')
-            await db.rollback()
+        cooldown_log_id = await _log_deduped_decision(
+            db=db,
+            project_id=project_id,
+            user_id=user_id,
+            issue=issue,
+            severity=severity,
+            scan_round=scan_round,
+            original_message=original_message,
+            decision='cooldown',
+            decision_reason='同类修复失败过，冷却期内跳过本轮',
+            verify_message=f'冷却中（同类修复失败过，冷却 {FAILED_COOLDOWN_HOURS}h / 环境类 {ENV_FAILED_COOLDOWN_MINUTES}min）',
+            fix_result='skipped_cooldown',
+        )
         result = {
             'type': diag_type,
             'severity': severity,
@@ -264,41 +216,20 @@ async def _decide_action(
             logger.info(
                 f'[PM-Agent 决策] 重试上限: type={diag_type} project={project_id[:8]} 近7天已尝试 {attempt_count} 次 ≥ 上限 {MAX_AUTO_FIX_ATTEMPTS}'
             )
-            try:
-                dup = await db.execute(
-                    select(func.count())
-                    .select_from(PMDecisionLog)
-                    .where(
-                        PMDecisionLog.project_id == project_id,
-                        PMDecisionLog.diag_type == diag_type,
-                        PMDecisionLog.decision == 'manual',
-                        PMDecisionLog.created_at >= datetime.now() - timedelta(hours=1),
-                    )
-                )
-                if (dup.scalar_one() or 0) == 0:
-                    await _log_decision(
-                        db=db,
-                        project_id=project_id,
-                        user_id=user_id,
-                        issue=issue,
-                        severity=severity,
-                        decision='manual',
-                        decision_reason=f'自动修复连续失败达上限（近7天已尝试 {attempt_count}/{MAX_AUTO_FIX_ATTEMPTS} 次），转人工处理',
-                        fix_action='',
-                        fix_result='skipped',
-                        fix_attempted=False,
-                        verified=False,
-                        verified_at=None,
-                        verify_message=f'自动修复连续失败达上限（近7天已尝试 {attempt_count} 次，达上限 {MAX_AUTO_FIX_ATTEMPTS}），等待人工处理',
-                        scan_round=scan_round,
-                        original_message=original_message,
-                        fix_details=None,
-                    )
-                    await db.commit()
-            except Exception as log_e:
-                logger.warning(f'[PM-Agent 决策] 记录 manual 决策失败（非阻塞）: {log_e}')
-                await db.rollback()
             _cap_verify_msg = f'自动修复连续失败达上限（近7天已尝试 {attempt_count} 次，达上限 {MAX_AUTO_FIX_ATTEMPTS}），等待人工处理'
+            await _log_deduped_decision(
+                db=db,
+                project_id=project_id,
+                user_id=user_id,
+                issue=issue,
+                severity=severity,
+                scan_round=scan_round,
+                original_message=original_message,
+                decision='manual',
+                decision_reason=f'自动修复连续失败达上限（近7天已尝试 {attempt_count}/{MAX_AUTO_FIX_ATTEMPTS} 次），转人工处理',
+                verify_message=_cap_verify_msg,
+                fix_result='skipped',
+            )
             result = {
                 'type': diag_type,
                 'severity': severity,

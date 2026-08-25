@@ -1,5 +1,6 @@
 """强化版质量评分器 — 7维评分 + 改进建议 + 自动重试闭环"""
 
+import json
 import math
 import re as _re_q
 
@@ -116,8 +117,6 @@ class PMQualityScorerV2:
                 if not r:
                     raise RuntimeError('AI 评分调用失败/超时（已熔断或回退到规则评分）')
                 raw = str(r.get('content', '')) if isinstance(r, dict) else str(r)
-                import json
-
                 m = _re_q.search(r'\{.*\}', raw, _re_q.DOTALL)
                 if m:
                     parsed = json.loads(m.group())
@@ -132,7 +131,8 @@ class PMQualityScorerV2:
             para_count = content.count('\n\n') + 1
             scores['pacing'] = min(100, int(wc / max(para_count, 1) * 2)) if para_count else 60
             scores['dialogue'] = 60
-            scores['hook'] = 80 if '?' in content[:500] else 50
+            # 修复：仅识别 ASCII '?' 会让中文全角问号「？」的强钩子章节漏判（网文高频标点）
+            scores['hook'] = 80 if ('?' in content[:500] or '？' in content[:500]) else 50
             scores['character_consistency'] = 70
             scores['plot_logic'] = 70
             scores['emotional_curve'] = 60
@@ -245,6 +245,8 @@ class PMQualityScorerV2:
 
 class QualityLoop:
     """质量闭环：评分 → 不合格 → 改进 → 重评分"""
+
+    MAX_RETRIES = 3  # 与 PMQualityScorerV2.MAX_RETRIES 对齐；此前缺失导致 AttributeError
 
     def __init__(self, scorer: PMQualityScorerV2, memory=None):
         self.scorer = scorer

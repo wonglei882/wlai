@@ -301,11 +301,7 @@ class LongNovelGuardian:
                 )
             )
 
-        # 检查角色死亡后是否被提及
-        for c in chapters[-10:]:
-            if c.id == latest.id:
-                continue
-            # 无需额外逻辑，OOCDetector 已处理
+        # 角色死亡后是否被提及：由 OOCDetector 负责，此处不重复检测
         return issues
 
     def _check_main_plot(self, storylines: list, chapters: list, latest_n: int) -> list[GuardianIssue]:
@@ -353,14 +349,11 @@ class LongNovelGuardian:
         )
         chars = list(char_r.scalars().all())
 
-        result = {
-            c.name: {
-                'role': '主角' if c.role_type == 'protagonist' else '反派' if c.role_type == 'antagonist' else '配角',
-                'total': 0,
-                'per_chapter': {},
-            }
-            for c in chars
-        }
+        # 用 setdefault 累加而非 dict 推导：同名角色不会互相覆盖，计数合并到同一名字
+        result: dict[str, dict] = {}
+        for c in chars:
+            role = '主角' if c.role_type == 'protagonist' else '反派' if c.role_type == 'antagonist' else '配角'
+            result.setdefault(c.name, {'role': role, 'total': 0, 'per_chapter': {}})
 
         for ch in chapters:
             content = ch.content or ''

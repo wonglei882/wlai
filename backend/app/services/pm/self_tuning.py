@@ -140,30 +140,6 @@ def _beta_cdf_trap(x: float, a: float, b: float, steps: int = 2000) -> float:
     return max(0.0, min(1.0, s * dx))
 
 
-def _lngamma(x: float) -> float:
-    """Gamma 函数对数的 Lanczos 近似（数值稳定）。"""
-    g = 7
-    c = [
-        0.99999999999980993,
-        676.5203681218851,
-        -1259.1392167224028,
-        771.32342877765313,
-        -176.61502916214059,
-        12.507343278686905,
-        -0.13857109526572012,
-        9.9843695780195716e-6,
-        1.5056327351493116e-7,
-    ]
-    if x < 0.5:
-        return math.log(math.pi / math.sin(math.pi * x)) - _lngamma(1 - x)
-    x -= 1
-    base = c[0]
-    for i in range(1, g + 2):
-        base += c[i] / (x + i)
-    t = x + g + 0.5
-    return 0.5 * math.log(2 * math.pi) + (x + 0.5) * math.log(t) - t + math.log(base)
-
-
 async def _get_latest_session_state(db, project_id: str, user_id: str):
     """Q3: 返回 (project_id,user_id) 最近 PMSessionState；无则 None。
     原 7 处重复 select+order_by+limit(1) 提取至此单一函数。"""
