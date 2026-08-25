@@ -34,6 +34,7 @@ from app.logger import get_logger
 from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.feature_config import pm_feature_config
 from app.services.pm.pm_agent_decision import classify_severity_by_type, diagnose_and_fix
+from app.services.pm.pm_runtime_state import PMRuntimeState, runtime_state
 
 # 扫描函数与 SCAN_REGISTRY 注册表已移至 pm_scanners.py（控制文件行数 < 800）
 # 通过 import 触发 pm_scanners 模块加载，使其 @scan_dimension 装饰器填充 SCAN_REGISTRY
@@ -70,27 +71,16 @@ _proactive_cfg = pm_feature_config.get_feature_config('optional.proactive_report
 _PROACTIVE_ENABLED = bool(_proactive_cfg.get('enabled', True))
 _PROACTIVE_DEDUP_HOURS = int(_proactive_cfg.get('dedup_hours', 1))
 _PROACTIVE_PERSIST_SUGGESTIONS = bool(_proactive_cfg.get('persist_suggestions', True))
-# 每项目上次 daily_summary 时间（24h 节流，避免每日汇总刷屏）
-_last_daily_summary: dict[str, 'datetime'] = {}
 
-# 全局巡检任务引用（用于 shutdown 时取消）
-_pm_agent_task: asyncio.Task | None = None
-# 上次巡检时间戳（供健康检查判断循环是否存活）
-_last_scan_at: float = 0.0
-# 最近一轮巡检覆盖面（项目数/章节总数）——心跳日志的数据源，静默失效的唯一观测窗口
-_last_round_stats: dict[str, int] = {'scanned_projects': 0, 'scanned_chapters': 0}
-# 巡检循环异常计数（用于自动重启决策）
-_loop_crash_count: int = 0
+# 巡检循环异常最大自动重启次数（崩溃保护上限）
 _MAX_CRASH_RESTART = 3
-# 上一轮巡检触发只读降级的项目数（供 get_pm_health 暴露）
-_last_round_degraded_count: int = 0
-# P0.4: 连续无 issue 的空闲轮数（用于自动降频）
-_consecutive_idle_rounds: int = 0
-# P0.4: 上一轮各项目的章节数（用于检测是否有新章节）
-_last_round_chapter_counts: dict[str, int] = {}
 # P0.4: 连续空闲 N 轮后降频倍数（2 → 间隔 × 4 = 30min → 2h）
-IDLE_THRESHOLD_ROUNDS = 2
-IDLE_INTERVAL_MULTIPLIER = 4
+# 阈值/倍率来自 pm_features.yaml: performance.idle_*
+IDLE_THRESHOLD_ROUNDS = _perf_cfg.get('idle_threshold_rounds', 2)
+IDLE_INTERVAL_MULTIPLIER = _perf_cfg.get('idle_interval_multiplier', 4)
+
+# 注：可变运行时状态（巡检任务引用/上次扫描时间/空闲计数/崩溃计数/章节计数/每日汇总节流等）
+# 已收拢至 pm_runtime_state.PMRuntimeState 单例（runtime_state），本模块不再声明模块级全局变量。
 
 
 def _compute_idle_interval(idle_rounds: int) -> int:
@@ -102,19 +92,19 @@ def _compute_idle_interval(idle_rounds: int) -> int:
 
 def _next_sleep_seconds(round_completed: bool, round_issues: int, has_new_chapters: bool) -> int:
     """P0.4 动态间隔的纯决策：只有正常完成且干净的轮次才累计空闲（异常/超时轮保持满频）。"""
-    global _consecutive_idle_rounds
+    idle_rounds = runtime_state.consecutive_idle_rounds
     if round_issues > 0 or has_new_chapters:
-        _consecutive_idle_rounds = 0
+        runtime_state.consecutive_idle_rounds = 0
         return SCAN_INTERVAL_SECONDS
     if not round_completed:
-        if _consecutive_idle_rounds:
+        if idle_rounds:
             logger.warning('[PM-Agent] 本轮巡检未正常完成（异常/超时），空闲计数清零保持满频巡检')
-        _consecutive_idle_rounds = 0
+        runtime_state.consecutive_idle_rounds = 0
         return SCAN_INTERVAL_SECONDS
-    _consecutive_idle_rounds += 1
-    multiplier = _compute_idle_interval(_consecutive_idle_rounds)
+    runtime_state.consecutive_idle_rounds = idle_rounds + 1
+    multiplier = _compute_idle_interval(runtime_state.consecutive_idle_rounds)
     if multiplier > 1:
-        logger.info(f'[PM-Agent] 连续 {_consecutive_idle_rounds} 轮无 issue，降频×{multiplier}（{SCAN_INTERVAL_SECONDS * multiplier // 60} 分钟）')
+        logger.info(f'[PM-Agent] 连续 {runtime_state.consecutive_idle_rounds} 轮无 issue，降频×{multiplier}（{SCAN_INTERVAL_SECONDS * multiplier // 60} 分钟）')
         return SCAN_INTERVAL_SECONDS * multiplier
     return SCAN_INTERVAL_SECONDS
 
@@ -259,8 +249,8 @@ def _log_round_summary(*, issues_projects: int, total_issues: int, decisions: in
     """每轮巡检无条件输出的 INFO 心跳——静默失效的唯一防线，勿降级为 debug。"""
     logger.info(
         '[PM-Agent] 本轮巡检完成: 扫描 %s 项目/%s 章节, %s 项目有问题, 发现 %s 问题, 决策 %s 次, 修复 %s 次, 验证通过 %s 次, 耗时 %.1fs',
-        _last_round_stats.get('scanned_projects', 0),
-        _last_round_stats.get('scanned_chapters', 0),
+        runtime_state.last_round_stats.get('scanned_projects', 0),
+        runtime_state.last_round_stats.get('scanned_chapters', 0),
         issues_projects,
         total_issues,
         decisions,
@@ -268,6 +258,17 @@ def _log_round_summary(*, issues_projects: int, total_issues: int, decisions: in
         verified,
         elapsed_s,
     )
+    # 指标埋点：巡检轮次/覆盖项目/问题数/耗时（此前 record_scan 已定义但从未接线）
+    try:
+        from app.services.pm.pm_metrics import _metrics
+
+        _metrics.record_scan(
+            runtime_state.last_round_stats.get('scanned_projects', 0),
+            total_issues,
+            elapsed_s,
+        )
+    except Exception as me:
+        logger.debug(f'[PM-Agent] record_scan 埋点失败（非阻塞）: {me}')
 
 
 async def scan_all_projects() -> dict[str, Any]:
@@ -302,8 +303,7 @@ async def scan_all_projects() -> dict[str, Any]:
         for row in projects_result.fetchall():
             project_map[row[0]] = {'user_id': row[1], 'title': row[2], 'chapter_count': row[3]}
 
-        global _last_round_stats
-        _last_round_stats = {
+        runtime_state.last_round_stats = {
             'scanned_projects': len(project_map),
             'scanned_chapters': sum(int(info.get('chapter_count') or 0) for info in project_map.values()),
         }
@@ -311,8 +311,7 @@ async def scan_all_projects() -> dict[str, Any]:
     if not project_map:
         return {}
 
-    global _last_round_degraded_count
-    _last_round_degraded_count = 0
+    runtime_state.last_round_degraded_count = 0
 
     async def _scan_one(project_id: str, project_info: dict):
         """单个项目巡检（独立 session，可并行）。"""
@@ -336,8 +335,7 @@ async def scan_all_projects() -> dict[str, Any]:
 
                 # 只读降级逻辑已在 _scan_single_project 内基于 MAX_ISSUES_PER_ROUND 实现
                 if total > MAX_ISSUES_PER_ROUND:
-                    global _last_round_degraded_count
-                    _last_round_degraded_count += 1
+                    runtime_state.last_round_degraded_count += 1
 
                 if total > 0:
                     logger.info(
@@ -518,14 +516,14 @@ async def _run_proactive_report(project_id: str, user_id: str, total_issues: int
 
             # 3. 每日汇总（24h 节流；只取 daily_stats 项，跳过其内部 check 预警避免重复扫描）
             now = datetime.now()
-            last = _last_daily_summary.get(project_id)
+            last = runtime_state.last_daily_summary.get(project_id)
             if last is None or (now - last) >= timedelta(hours=24):
                 try:
                     daily_report = await _reporter.daily_summary(project_id, user_id, db)
                     for item in daily_report.items:
                         if item.type == 'daily_stats':
                             await _persist(item.type, 'warning', item.msg, item.suggestion, item.chapter_number)
-                    _last_daily_summary[project_id] = now
+                    runtime_state.last_daily_summary[project_id] = now
                 except Exception as de:
                     logger.debug(f'[PM-Agent] daily_summary 失败（非阻塞）: {de}')
 
@@ -634,8 +632,7 @@ async def pm_agent_loop():
                 )
 
                 # 记录巡检完成时间戳（供健康检查判断循环是否存活）
-                global _last_scan_at
-                _last_scan_at = time.time()
+                runtime_state.last_scan_at = time.time()
 
                 # 每 CLEANUP_EVERY_ROUNDS 轮（默认 48 ≈ 24h）清理一次历史日志
                 _scan_round_count = getattr(pm_agent_loop, '_round_count', 0) + 1
@@ -654,7 +651,6 @@ async def pm_agent_loop():
                 logger.warning(f'[PM-Agent] 巡检循环异常: {e}')
 
             # P0.4: 动态巡检间隔 — 连续无 issue 自动降频，有新章节恢复；异常/超时轮清零计数
-            global _last_round_chapter_counts
             total_round_issues = 0
             _scan_data = result  # try 前置初值 {}，异常/超时轮安全
             for _pid, _result in _scan_data.items():
@@ -673,11 +669,11 @@ async def pm_agent_loop():
                         if isinstance(_ch, (int, float)) and _ch > _max_ch:
                             _max_ch = int(_ch)
                 _current_counts[_pid] = _max_ch
-                _prev = _last_round_chapter_counts.get(_pid, 0)
+                _prev = runtime_state.last_round_chapter_counts.get(_pid, 0)
                 if _max_ch > _prev:
                     _has_new_chapters = True
 
-            _last_round_chapter_counts = _current_counts
+            runtime_state.last_round_chapter_counts = _current_counts
 
             _sleep_seconds = _next_sleep_seconds(_round_completed, total_round_issues, _has_new_chapters)
 
@@ -694,24 +690,22 @@ async def pm_agent_loop():
 
 def register_pm_agent():
     """在应用启动时注册 PM Agent 后台巡检任务（含自动重启保护）。"""
-    global _pm_agent_task, _loop_crash_count
-
     # 从文件恢复 Kill/Pause 状态（防止进程重启后 Kill Switch "复活"）
     from app.api.pm_control import PMControlState
 
     PMControlState.init_from_file()
 
     # 显式注册所有修复 handler（消除模块加载副作用）
-    from app.services.pm.pm_agent_decision import register_pm_handlers
+    from app.services.pm.pm_fix_handlers import register_pm_handlers
 
     register_pm_handlers()
 
     # 启动时校验注册维度（避免模块加载时循环导入）
     validate_registry()
 
-    if _pm_agent_task is None or _pm_agent_task.done():
-        _loop_crash_count = 0
-        _pm_agent_task = asyncio.create_task(_supervised_pm_agent_loop())
+    if runtime_state.pm_agent_task is None or runtime_state.pm_agent_task.done():
+        runtime_state.loop_crash_count = 0
+        runtime_state.pm_agent_task = asyncio.create_task(_supervised_pm_agent_loop())
         logger.info('[PM-Agent] PM Agent 后台巡检任务已注册（含自动重启监督）')
     else:
         logger.debug('[PM-Agent] PM Agent 已在运行，跳过注册')
@@ -719,9 +713,7 @@ def register_pm_agent():
 
 async def _supervised_pm_agent_loop():
     """监督包装器：pm_agent_loop 异常退出时自动重启（最多 _MAX_CRASH_RESTART 次）。"""
-    global _loop_crash_count
-
-    while _loop_crash_count < _MAX_CRASH_RESTART:
+    while runtime_state.loop_crash_count < _MAX_CRASH_RESTART:
         try:
             await pm_agent_loop()
             # 正常退出（Kill Switch 或 CancelledError）
@@ -730,23 +722,24 @@ async def _supervised_pm_agent_loop():
             logger.info('[PM-Agent] 巡检循环被取消（应用关闭）')
             raise
         except Exception as e:
-            _loop_crash_count += 1
+            runtime_state.loop_crash_count += 1
             logger.error(
-                f'[PM-Agent] 巡检循环异常退出 (crash {_loop_crash_count}/{_MAX_CRASH_RESTART}): {e}',
+                f'[PM-Agent] 巡检循环异常退出 (crash {runtime_state.loop_crash_count}/{_MAX_CRASH_RESTART}): {e}',
                 exc_info=True,
             )
-            if _loop_crash_count < _MAX_CRASH_RESTART:
+            if runtime_state.loop_crash_count < _MAX_CRASH_RESTART:
                 logger.info('[PM-Agent] 将在 30s 后自动重启巡检循环')
                 await asyncio.sleep(30)
             else:
                 logger.error('[PM-Agent] 达到最大重启次数，停止自动重启')
-                await _write_system_alert('', '', f'PM Agent 巡检循环崩溃 {(_loop_crash_count)} 次，已停止自动重启')
+                await _write_system_alert('', '', f'PM Agent 巡检循环崩溃 {runtime_state.loop_crash_count} 次，已停止自动重启')
 
 
 def get_pm_health() -> dict[str, Any]:
     """获取 PM Agent 健康状态（供 /pm-control/status API 使用）。"""
-    task_alive = _pm_agent_task is not None and not _pm_agent_task.done()
-    seconds_since_last_scan = (time.time() - _last_scan_at) if _last_scan_at > 0 else None
+    task_alive = runtime_state.pm_agent_task is not None and not runtime_state.pm_agent_task.done()
+    last_scan_at = runtime_state.last_scan_at
+    seconds_since_last_scan = (time.time() - last_scan_at) if last_scan_at > 0 else None
 
     # 如果超过 2 轮巡检间隔没有扫描，认为循环不健康
     is_healthy = task_alive
@@ -757,11 +750,11 @@ def get_pm_health() -> dict[str, Any]:
         'task_alive': task_alive,
         'is_healthy': is_healthy,
         'last_scan_ago_seconds': int(seconds_since_last_scan) if seconds_since_last_scan else None,
-        'crash_count': _loop_crash_count,
-        'last_round_degraded_count': _last_round_degraded_count,
+        'crash_count': runtime_state.loop_crash_count,
+        'last_round_degraded_count': runtime_state.last_round_degraded_count,
         'scan_interval_seconds': SCAN_INTERVAL_SECONDS,
-        'consecutive_idle_rounds': _consecutive_idle_rounds,
-        'idle_throttled': _consecutive_idle_rounds >= IDLE_THRESHOLD_ROUNDS,
+        'consecutive_idle_rounds': runtime_state.consecutive_idle_rounds,
+        'idle_throttled': runtime_state.consecutive_idle_rounds >= IDLE_THRESHOLD_ROUNDS,
         'circuit_breakers': _get_circuit_status_safe(),
         'metrics': _get_metrics_safe(),
     }
@@ -835,9 +828,8 @@ async def _cleanup_old_logs():
 
 def stop_pm_agent():
     """在应用关闭时停止 PM Agent 后台巡检任务。"""
-    global _pm_agent_task
-    if _pm_agent_task:
-        _pm_agent_task.cancel()
+    if runtime_state.pm_agent_task:
+        runtime_state.pm_agent_task.cancel()
         logger.info('[PM-Agent] PM Agent 后台巡检任务已请求停止')
 
 

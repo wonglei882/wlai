@@ -75,6 +75,8 @@ features:
       description: "自进化（技能自生长）"
       trigger: "on_demand"
       token_cost: "very_high"
+      similarity_threshold: 0.8    # 经验相似度 > 此值合并
+      decay_half_life_days: 30     # 经验置信度衰减半衰期（天）
 
     world_drift_llm_fix:
       enabled: true
@@ -139,6 +141,9 @@ performance:
   parallel_projects: true
   decompose_threshold: 3       # 问题数超过此值时调用 LLM 排序（避免硬编码）
   cleanup_every_rounds: 48    # 每 N 轮巡检清理一次历史日志（48 轮 ≈ 24h）
+  max_auto_fix_attempts: 3    # 近 7 天同类修复尝试上限（止血#3：超过转人工，防无限重试）
+  idle_threshold_rounds: 2    # 连续空闲 N 轮后降频
+  idle_interval_multiplier: 4 # 降频倍数（2 轮空闲 → 间隔 × 4）
 
 # ============================================================================
 # 世界观冲突检测配置

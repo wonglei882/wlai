@@ -152,6 +152,11 @@ backend/
 | 优先级 | 债务项 | 收益 |
 |---|---|---|
 | ✅ P0 | **测试覆盖缺失** → 已补齐 65 用例全部通过 | 回归保护已建立 |
+| ✅ P0 | **全局状态收拢** → `PMRuntimeState` 单例，消除 8 个模块级变量 + 9 处 `global` | 测试可整体复位状态 |
+| ✅ P1 | **公共 API 边界** → 新建 `pm_api.py` 门面，两个 API 路由已切换 | 外部调用路径稳定 |
+| ✅ P1 | **兼容再导出清理** → 删除 `pm_agent_decision` 中为不存在 tests/unit 服务的 20 行死代码 | 打破三层 re-export 链 |
+| ✅ P3 | **魔法数字配置化** → `max_auto_fix_attempts`/`idle_*`/`similarity_threshold`/`decay_half_life_days` 入 yaml | 改值不重启 |
+| ✅ P4 | **metrics 接线** → `record_scan` 此前已定义从未调用，现已接入每轮心跳 | 巡检指标可观测 |
 | P1 | 6 个超长文件拆分 | 可维护性显著提升 |
 | P2 | 三个入口脚本去重 | 统一运维入口 |
 | P2 | provider 错误处理逐家校对（openai/anthropic/gemini 三套） | 行为一致性 |

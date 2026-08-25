@@ -10,12 +10,14 @@ import re
 import math
 from datetime import datetime
 from app.logger import get_logger
+from app.services.pm.feature_config import get_pm_feature_config
 
 logger = get_logger(__name__)
 
-# L4 方向3 常量
-SIMILARITY_THRESHOLD = 0.8  # 相似度 > 此值时合并经验
-DECAY_HALF_LIFE_DAYS = 30  # 30 天半衰期
+# L4 方向3 常量（相似度阈值/衰减半衰期来自 pm_features.yaml: optional.self_evolution）
+_evolve_cfg = get_pm_feature_config('optional.self_evolution') or {}
+SIMILARITY_THRESHOLD = _evolve_cfg.get('similarity_threshold', 0.8)  # 相似度 > 此值时合并经验
+DECAY_HALF_LIFE_DAYS = _evolve_cfg.get('decay_half_life_days', 30)  # 30 天半衰期
 DECAY_THRESHOLD = 0.2  # 置信度低于此值 → 归档（不删除）
 RULE_PROMOTION_THRESHOLD = 5  # 同类经验累积到此数 → 提升为规则
 

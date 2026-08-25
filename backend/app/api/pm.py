@@ -200,7 +200,7 @@ async def feedback_decision(
 async def trigger_rerun():
     """手动触发一轮全量 PM Agent 巡检 + 决策 + 修复 + 验证。"""
     try:
-        from app.services.pm.pm_agent import scan_all_projects
+        from app.services.pm.pm_api import scan_all_projects
 
         result = await scan_all_projects()
 

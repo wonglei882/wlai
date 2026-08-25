@@ -272,7 +272,7 @@ async def get_pm_status():
     # 附加健康检查信息
     health = {}
     try:
-        from app.services.pm.pm_agent import get_pm_health
+        from app.services.pm.pm_api import get_pm_health
 
         health = get_pm_health()
     except Exception as e:

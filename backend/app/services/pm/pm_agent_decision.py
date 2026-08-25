@@ -26,6 +26,7 @@ import re
 import contextlib
 
 from app.logger import get_logger
+from app.services.pm.feature_config import pm_feature_config
 from app.services.pm.pm_fix_handlers import (
     _has_auto_fix,
     FAILED_COOLDOWN_HOURS,
@@ -35,33 +36,15 @@ from app.services.pm.pm_fix_handlers import (
     _classify_failure,
 )
 
-# handler 注册入口兼容再导出：P2 拆分后定义移至 pm_fix_handlers，
-# 但 pm_agent.register_pm_agent() 与单测/e2e 仍从本模块导入这两个名字，
-# 缺失会导致容器启动期 PM Agent 注册失败（cannot import name ...）。
-from app.services.pm.pm_fix_handlers import _FIX_HANDLERS, register_pm_handlers  # noqa: F401
-
-# 决策链拆分兼容再导出（第二批）：tests/unit 下 8 个测试文件从本模块导入以下私有符号，
-# 定义已迁至 pm_fix_handlers（_fix_* 具体实现在 pm_fix_executors），
-# 断链会导致 ImportError 且 pytest 收集中断（test_goal_stability.py）。
-from app.services.pm.pm_fix_executors import (  # noqa: F401
-    _fix_outline_drift,
-    _fix_quality_low,
-)
-from app.services.pm.pm_fix_handlers import (  # noqa: F401
-    _check_goal_drift,
-    _execute_fix,
-    _verify_character_fix,
-    _verify_fix,
-    _verify_quality_fix,
-    _verify_world_fix,
-    _verify_world_keywords,
-)
+# 注：决策链已拆分为 decision → handlers → executors 三层，
+# 各层符号均在定义处直接导入，不再做兼容再导出（tests/unit 不存在）。
 
 logger = get_logger(__name__)
 
 # 止血 #3：跨轮自动修复重试上限——近 7 天内同一项目+同一类型的修复尝试（fix_attempted=True）
 # 达到该次数后转人工，防止"每轮巡检都重试同一个修不好的问题"的无限循环。
-MAX_AUTO_FIX_ATTEMPTS = 3
+# 上限来自 pm_features.yaml: performance.max_auto_fix_attempts
+MAX_AUTO_FIX_ATTEMPTS = pm_feature_config.get_performance().get('max_auto_fix_attempts', 3)
 
 
 # =============================================================================
