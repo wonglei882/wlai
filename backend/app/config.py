@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     """应用配置"""
 
     # 应用配置
-    app_name: str = 'WLAINovel'
+    app_name: str = 'WLaiNovel'
     app_version: str = '1.0.0'
     app_host: str = '0.0.0.0'  # noqa: S104  容器化部署默认监听全部网卡，属服务端预期行为
     app_port: int = 8000
@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = False
     SMTP_USE_SSL: bool = True
     SMTP_FROM_EMAIL: str | None = None
-    SMTP_FROM_NAME: str = 'WLAINovel'
+    SMTP_FROM_NAME: str = 'WLaiNovel'
     EMAIL_AUTH_ENABLED: bool = True
     EMAIL_REGISTER_ENABLED: bool = True
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10

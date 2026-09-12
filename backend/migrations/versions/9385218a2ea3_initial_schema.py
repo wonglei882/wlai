@@ -410,7 +410,7 @@ def upgrade() -> None:
     sa.Column('smtp_use_tls', sa.Boolean(), server_default='0', nullable=False, comment='是否启用 TLS'),
     sa.Column('smtp_use_ssl', sa.Boolean(), server_default='1', nullable=False, comment='是否启用 SSL'),
     sa.Column('smtp_from_email', sa.String(length=255), nullable=True, comment='发件人邮箱'),
-    sa.Column('smtp_from_name', sa.String(length=255), server_default='WLAINovel', nullable=False, comment='发件人名称'),
+    sa.Column('smtp_from_name', sa.String(length=255), server_default='WLaiNovel', nullable=False, comment='发件人名称'),
     sa.Column('email_auth_enabled', sa.Boolean(), server_default='1', nullable=False, comment='是否启用邮箱认证'),
     sa.Column('email_register_enabled', sa.Boolean(), server_default='1', nullable=False, comment='是否启用邮箱注册'),
     sa.Column('verification_code_ttl_minutes', sa.Integer(), server_default='10', nullable=False, comment='验证码有效期（分钟）'),

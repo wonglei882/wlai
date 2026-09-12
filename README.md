@@ -1,6 +1,6 @@
-# WLAI-PM
+# WLai-PM
 
-从 `WLAINovel-main` 提取的 **PM Agent（项目主管 Agent）独立后端模块**，用于代码研究与重构。
+从 `WLaiNovel-main` 提取的 **PM Agent（项目主管 Agent）独立后端模块**，用于代码研究与重构。
 
 ## 项目结构
 

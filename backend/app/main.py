@@ -41,14 +41,14 @@ async def lifespan(app: FastAPI):
         init_pm_event_listeners()
     except Exception as e:  # noqa: BLE001 - 监听器注册失败不应阻断启动
         logger.warning('PM 事件监听器注册失败: %s', e)
-    logger.info('WLAI PM 后端服务已启动')
+    logger.info('WLai PM 后端服务已启动')
     yield
-    logger.info('WLAI PM 后端服务已停止')
+    logger.info('WLai PM 后端服务已停止')
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title='WLAI PM - AI 项目经理后端服务',
+        title='WLai PM - AI 项目经理后端服务',
         description='长篇网文创作的 PM 子系统：主动巡检、章节质量诊断、灵感与守护。',
         version='1.0.0',
         lifespan=lifespan,

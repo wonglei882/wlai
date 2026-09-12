@@ -1,4 +1,4 @@
-# WLAI-PM 全面检查报告
+# WLai-PM 全面检查报告
 
 检查时间：2026-08-24
 检查范围：backend 全量（app 包 + 3 个入口脚本 + scripts 验证脚本）、README、运行环境
