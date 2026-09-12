@@ -11,9 +11,9 @@
 from datetime import datetime
 from typing import Any, Optional
 
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _GREETING = {
     'morning': '早上好，新的一天，从笔下开始吧。',

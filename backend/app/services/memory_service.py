@@ -12,11 +12,11 @@ from typing import Any
 from app.core import json_utils as json
 from app.services.json_helper import safe_int, safe_float
 from datetime import datetime
-from app.logger import get_logger
+import logging
 import os
 import hashlib
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 配置模型缓存目录
 # 优先使用 backend/embedding 目录（打包后的实际位置）

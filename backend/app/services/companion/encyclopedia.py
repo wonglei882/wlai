@@ -15,9 +15,9 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # backend/app/services/companion/encyclopedia.py
 # parents[0]=companion [1]=services [2]=app [3]=backend

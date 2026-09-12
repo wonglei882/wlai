@@ -5,14 +5,14 @@ import re
 from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.logger import get_logger
+import logging
 from app.models.character import Character
 from app.models.chapter import Chapter
 from app.models.ooc_violation import OOCViolation as OOCModel
 from app.services.ai.ai_service import AIService
 from app.services.guardian.continuity_service import ContinuityIssue
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

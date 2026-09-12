@@ -7,12 +7,12 @@ from sqlalchemy import select, update
 from app.models.foreshadow import Foreshadow
 from app.models.golden_finger import GoldenFinger
 from app.models.outline import Outline
-from app.logger import get_logger
+import logging
 from app.agent.core.command_registry import ToolDefinition, RiskLevel
 from app.services.pm.pm_time import pm_now
 from app.services.json_helper import safe_float, safe_int, safe_json_loads
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _make_response(success: bool, message: str, data: dict | None = None) -> dict:

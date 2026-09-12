@@ -4,12 +4,12 @@
 各子模块统一从此导入共享依赖，避免重复定义。
 """
 
-from app.logger import get_logger
+import logging
 from app.services.json_helper import safe_int, safe_json_loads  # noqa: F401 re-export for pm_write modules
 
 __all__ = ['safe_int', 'safe_json_loads']
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _make_response(success: bool, message: str, data: dict | None = None) -> dict:

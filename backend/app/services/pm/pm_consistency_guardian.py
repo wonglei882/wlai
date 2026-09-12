@@ -6,7 +6,7 @@ from collections import Counter
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.logger import get_logger
+import logging
 from app.models.pm_consistency_state import PMConsistencyState
 from app.models.chapter import Chapter
 from app.models.project import Project
@@ -59,7 +59,7 @@ def _text_to_tfidf(text: str, idf_weights: dict | None = None) -> dict:
     return tf_normalized
 
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # ============ 守护者服务 ============

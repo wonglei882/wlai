@@ -4,10 +4,10 @@ from app.core import json_utils as json
 from typing import Any
 from collections.abc import AsyncGenerator
 
-from app.logger import get_logger
+import logging
 from .base_client import BaseAIClient
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class OpenAIClient(BaseAIClient):

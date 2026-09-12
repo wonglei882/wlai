@@ -15,10 +15,10 @@ from typing import Any
 
 from sqlalchemy import text, select
 
-from app.logger import get_logger
+import logging
 from app.models.pm_decision_log import PMDecisionLog
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 失败冷却：修复失败后同类问题在冷却期内不再重复尝试，避免死循环
 # - 逻辑类失败（handler 逻辑问题）：长冷却，等人工/代码修复

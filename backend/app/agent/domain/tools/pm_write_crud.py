@@ -15,9 +15,9 @@ from app.models.chapter import Chapter
 from app.models.character import Character
 from app.models.foreshadow import Foreshadow
 from app.models.outline import Outline
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================

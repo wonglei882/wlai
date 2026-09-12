@@ -7,11 +7,11 @@ from app.models.project import Project
 from app.models.character import Character
 from app.models.golden_finger import GoldenFinger
 from app.models.outline import Outline
-from app.logger import get_logger
+import logging
 from app.services.ai.ai_service import AIService
 from app.core import json_utils as json
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 DIMENSIONS = {
     'character_consistency': '角色一致性',

@@ -14,12 +14,19 @@ DATA_DIR.mkdir(exist_ok=True)
 # 配置模块使用标准logging（在logger.py初始化之前）
 config_logger = logging.getLogger(__name__)
 
+
+def _mask_url(url: str) -> str:
+    """脱敏数据库 URL，隐藏密码部分。"""
+    import re
+    return re.sub(r'://([^:]+):([^@]+)@', r'://\1:***@', url)
+
+
 # 数据库配置：PostgreSQL
 # 从环境变量获取数据库URL
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql+asyncpg://mumuai:password@localhost:5432/mumuai_novel')
 
 config_logger.debug('数据库类型: PostgreSQL')
-config_logger.debug(f'数据库URL: {DATABASE_URL}')
+config_logger.debug('数据库URL: %s', _mask_url(DATABASE_URL))
 
 
 class Settings(BaseSettings):

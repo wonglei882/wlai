@@ -5,10 +5,10 @@ from collections.abc import AsyncGenerator
 
 from anthropic import AsyncAnthropic
 
-from app.logger import get_logger
+import logging
 from app.services.ai.ai_config import AIClientConfig, default_config
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class AnthropicClient:

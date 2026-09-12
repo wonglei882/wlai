@@ -25,7 +25,7 @@ from typing import Any
 import re
 import contextlib
 
-from app.logger import get_logger
+import logging
 from app.services.pm.feature_config import pm_feature_config
 from app.services.pm.pm_fix_handlers import (
     _has_auto_fix,
@@ -39,7 +39,7 @@ from app.services.pm.pm_fix_handlers import (
 # 注：决策链已拆分为 decision → handlers → executors 三层，
 # 各层符号均在定义处直接导入，不再做兼容再导出（tests/unit 不存在）。
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 止血 #3：跨轮自动修复重试上限——近 7 天内同一项目+同一类型的修复尝试（fix_attempted=True）
 # 达到该次数后转人工，防止"每轮巡检都重试同一个修不好的问题"的无限循环。

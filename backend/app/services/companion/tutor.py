@@ -11,9 +11,9 @@
 
 from datetime import datetime
 
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 VALID_LEVELS = ('beginner', 'intermediate', 'expert')
 

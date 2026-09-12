@@ -6,10 +6,10 @@ from dataclasses import dataclass, field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from app.logger import get_logger
+import logging
 from app.agent.infrastructure.text_analysis import extract_keywords as _jieba_keywords
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass

@@ -3,7 +3,7 @@
 from app.core import json_utils as json
 import re
 from typing import Any
-from app.logger import get_logger
+import logging
 
 try:
     import json5
@@ -12,7 +12,7 @@ try:
 except ImportError:
     HAS_JSON5 = False
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # 中文引号/括号到ASCII的映射

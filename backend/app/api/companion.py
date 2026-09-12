@@ -18,9 +18,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.database import get_db
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix='/companion', tags=['Companion'])
 

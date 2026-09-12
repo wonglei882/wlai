@@ -10,10 +10,10 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.logger import get_logger
+import logging
 from app.services.pm.feature_config import is_pm_feature_enabled
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================

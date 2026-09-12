@@ -16,9 +16,9 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def filter_names_by_whitelist(candidates: Iterable[str], known_names: Iterable[str]) -> set[str]:

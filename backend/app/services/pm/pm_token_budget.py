@@ -16,10 +16,10 @@ from typing import Any
 
 from sqlalchemy import func, select
 
-from app.logger import get_logger
+import logging
 from app.models.pm_token_usage import PMTokenUsage
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 当日用量进程内缓存 user_id -> (monotonic_ts, used_tokens)
 _USAGE_CACHE_TTL_SECONDS = 60

@@ -4,13 +4,13 @@ import json
 import math
 import re as _re_q
 
-from app.logger import get_logger
+import logging
 from app.services.ai.ai_service import AIService
 
 # P0 修复：safe_int 未导入导致 468 次异常（name 'safe_int' is not defined）
 from app.services.json_helper import safe_int
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ScoreResult:

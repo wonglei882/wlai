@@ -30,7 +30,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_engine
-from app.logger import get_logger
+import logging
 from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.feature_config import pm_feature_config
 from app.services.pm.pm_agent_decision import classify_severity_by_type, diagnose_and_fix
@@ -49,7 +49,7 @@ _SCAN_ISSUE_TO_NAME: dict = {}
 for _dim_name, _dim_meta in SCAN_REGISTRY.items():
     _SCAN_ISSUE_TO_NAME[_dim_meta['issue_type']] = _dim_name
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 巡检参数从 pm_features.yaml 读取（feature_config 单例），避免"配置写了不用"
 _inspection_cfg = pm_feature_config.get_feature_config('core.inspection')

@@ -10,7 +10,7 @@ from typing import Any
 from collections.abc import AsyncGenerator, Callable
 
 from app.config import settings as app_settings
-from app.logger import get_logger
+import logging
 from app.services.ai.ai_config import AIClientConfig, default_config
 from app.services.ai.ai_metrics import AICallMetrics, TokenUsage, ToolCallMetrics
 from app.services.ai_clients.openai_client import OpenAIClient
@@ -26,7 +26,7 @@ from app.services.json_helper import clean_json_response, parse_json
 # 导出清理函数
 cleanup_http_clients = cleanup_all_clients
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def normalize_provider(provider: str | None) -> str | None:

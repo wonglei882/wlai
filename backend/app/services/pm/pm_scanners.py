@@ -18,11 +18,11 @@ from typing import Any
 from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.logger import get_logger
+import logging
 from app.services.pm.pm_consistency_guardian import PMConsistencyGuardian
 from app.services.pm.scan_support import has_unresolved_diagnostic, load_character_names
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 def _safe_json_loads(raw) -> dict[str, Any]:

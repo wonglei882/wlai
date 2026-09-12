@@ -15,9 +15,9 @@ PM 主链路完全不受影响。
 
 from datetime import datetime
 
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================

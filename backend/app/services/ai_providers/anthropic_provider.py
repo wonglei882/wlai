@@ -3,11 +3,11 @@
 from typing import Any
 from collections.abc import AsyncGenerator
 
-from app.logger import get_logger
+import logging
 from app.services.ai_clients.anthropic_client import AnthropicClient
 from .base_provider import BaseAIProvider
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class AnthropicProvider(BaseAIProvider):

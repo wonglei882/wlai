@@ -3,9 +3,9 @@
 import yaml
 from pathlib import Path
 from typing import Any
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PMFeatureConfig:

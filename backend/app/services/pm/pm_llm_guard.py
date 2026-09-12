@@ -15,9 +15,9 @@ from enum import Enum
 from typing import Any
 from collections.abc import Callable, Awaitable
 
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 超时（秒）
 LLM_TIMEOUT_SECONDS = 30

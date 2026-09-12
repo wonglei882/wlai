@@ -15,7 +15,7 @@ from typing import Any
 
 from sqlalchemy import select, func, desc
 
-from app.logger import get_logger
+import logging
 from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.pm_fix_handlers import (
     FAILED_COOLDOWN_HOURS,
@@ -23,7 +23,7 @@ from app.services.pm.pm_fix_handlers import (
     _classify_failure,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================

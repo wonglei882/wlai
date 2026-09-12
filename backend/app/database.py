@@ -7,10 +7,10 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from fastapi import Request, HTTPException
 from app.config import settings
-from app.logger import get_logger
+import logging
 from typing import TYPE_CHECKING
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 类型检查时的导入（避免循环导入）
 if TYPE_CHECKING:
@@ -34,7 +34,75 @@ _session_stats_lock = asyncio.Lock()
 _session_stats = {'created': 0, 'closed': 0, 'active': 0, 'errors': 0, 'generator_exits': 0, 'last_check': None}
 
 
-async def get_engine(user_id: str):
+# =============================================================================
+# 辅助函数（P2 重构：从 get_db 中提取，降低嵌套层级）
+# =============================================================================
+
+
+async def _safe_rollback(session, user_id, session_id):
+    """安全回滚会话，失败仅记录日志。"""
+    if not session.in_transaction():
+        return
+    try:
+        await session.rollback()
+        logger.info('事务已回滚 [User:%s][ID:%s]', user_id, session_id)
+    except Exception as e:
+        logger.error('回滚失败 [User:%s][ID:%s]: %s', user_id, session_id, e)
+
+
+def _get_or_create_session_maker(engine):
+    """获取或创建 sessionmaker（缓存复用，消除 get_db / get_db_session 重复逻辑）。"""
+    sm_key = f'sm_{id(engine)}'
+    if sm_key in _session_maker_cache:
+        return _session_maker_cache[sm_key]
+    sm = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    _session_maker_cache[sm_key] = sm
+    return sm
+
+
+async def _track_session_created():
+    async with _session_stats_lock:
+        _session_stats['created'] += 1
+        _session_stats['active'] += 1
+
+
+async def _track_generator_exit():
+    async with _session_stats_lock:
+        _session_stats['generator_exits'] += 1
+
+
+async def _track_error():
+    async with _session_stats_lock:
+        _session_stats['errors'] += 1
+
+
+async def _close_session(session, user_id, session_id):
+    """关闭会话、更新统计、检查泄漏阈值。"""
+    try:
+        await _safe_rollback(session, user_id, session_id)
+        await session.close()
+        async with _session_stats_lock:
+            _session_stats['closed'] += 1
+            _session_stats['active'] -= 1
+            _session_stats['last_check'] = datetime.now().isoformat()
+            _active = _session_stats['active']
+        if _active > settings.database_session_leak_threshold:
+            logger.error('严重告警：活跃会话数 %d 超过泄漏阈值 %d！', _active, settings.database_session_leak_threshold)
+        elif _active > settings.database_session_max_active:
+            logger.warning('警告：活跃会话数 %d 超过警告阈值 %d，可能存在连接泄漏！', _active, settings.database_session_max_active)
+        elif _active < 0:
+            logger.error('活跃会话数异常: %d，统计可能不准确！', _active)
+    except Exception as e:
+        async with _session_stats_lock:
+            _session_stats['errors'] += 1
+        logger.error('关闭会话时出错 [User:%s][ID:%s]: %s', user_id, session_id, e, exc_info=True)
+        try:
+            await session.close()
+        except Exception as e:
+            logger.warning('[SessionMgr] session.close 失败: %s', e)
+
+
+async def get_engine(user_id: str = None):
     """获取或创建用户专属的数据库引擎（线程安全）
 
     PostgreSQL: 所有用户共享一个数据库，通过user_id字段隔离数据

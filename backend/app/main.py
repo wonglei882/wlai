@@ -16,9 +16,25 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _validate_production_settings():
+    """生产环境配置校验，启动时执行。"""
+    import warnings
+    if not settings.SESSION_SECRET_KEY:
+        warnings.warn(
+            'SESSION_SECRET_KEY 未配置！会话签名将使用随机密钥，重启后所有会话失效。',
+            RuntimeWarning, stacklevel=2,
+        )
+    if settings.LOCAL_AUTH_ENABLED and not settings.LOCAL_AUTH_PASSWORD:
+        warnings.warn(
+            'LOCAL_AUTH_ENABLED=True 但 LOCAL_AUTH_PASSWORD 为空，本地登录无密码保护！',
+            RuntimeWarning, stacklevel=2,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期：启动时注册 PM 事件监听器。"""
+    _validate_production_settings()
     try:
         from app.services.core.event_bus_listeners import init_pm_event_listeners
 

@@ -17,10 +17,10 @@ import os
 import hashlib
 import re
 from typing import Any
-from app.logger import get_logger
+import logging
 from app.services.inspiration_sub.skill_template import _make_skill_name
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # =============================================================================
 # 向量检索层（复用 memory_service 的 embedding model）

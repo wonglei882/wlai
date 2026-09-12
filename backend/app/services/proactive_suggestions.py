@@ -1,8 +1,8 @@
 """主动建议引擎 — 在恰当时机向用户推送写作建议"""
 
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def generate_proactive_suggestions(project_id: str, db, ai_service=None) -> list[dict]:

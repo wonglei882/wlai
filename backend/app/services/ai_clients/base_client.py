@@ -8,10 +8,10 @@ from collections.abc import AsyncGenerator
 
 import httpx
 
-from app.logger import get_logger
+import logging
 from app.services.ai.ai_config import AIClientConfig, default_config
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 全局 HTTP 客户端池
 _http_client_pool: dict[str, httpx.AsyncClient] = {}

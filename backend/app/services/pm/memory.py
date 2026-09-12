@@ -1,11 +1,11 @@
 """项目主管强化版记忆系统 — 经验提炼 + 失败模式 + 偏好学习"""
 
 from datetime import datetime
-from app.logger import get_logger
+import logging
 from app.models.pm_v2 import ExperienceCard, FailurePattern, UserPreference
 from sqlalchemy import select
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class PMMemoryV2:

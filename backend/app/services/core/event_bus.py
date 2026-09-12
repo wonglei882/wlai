@@ -69,7 +69,7 @@ class EventBus:
         - async handler：用 create_task 异步执行，不等待
         - 异常：捕获并记录，不传播
         """
-        logger.warning(f'[EventBus] emit: {event_name}')
+        logger.debug('[EventBus] emit: %s', event_name)
         for handler, hid in self._listeners[event_name]:
             try:
                 if asyncio.iscoroutinefunction(handler):
@@ -83,11 +83,11 @@ class EventBus:
                     try:
                         handler(**kwargs)
                     except Exception:
-                        logger.warning(f'[EventBus] sync fallback failed: {event_name}.{hid}')
+                        logger.warning('[EventBus] sync fallback failed: %s.%s', event_name, hid)
                 else:
-                    logger.warning(f'[EventBus] RuntimeError: {e}')
+                    logger.warning('[EventBus] RuntimeError: %s', e)
             except Exception as e:
-                logger.warning(f'[EventBus] emit exception: {event_name}.{hid}: {e}')
+                logger.warning('[EventBus] emit exception: %s.%s: %s', event_name, hid, e)
 
     # --------------------------------------------------------------------------
     # 内部辅助
@@ -95,12 +95,12 @@ class EventBus:
 
     async def _safe_async(self, handler: Callable, event_name: str, handler_id: Any, kwargs: dict) -> None:
         """异步执行 handler，异常不传播。"""
-        logger.warning(f'[EventBus] _safe_async START: {event_name}.{handler_id}')
+        logger.debug('[EventBus] _safe_async START: %s.%s', event_name, handler_id)
         try:
             await handler(**kwargs)
-            logger.warning(f'[EventBus] _safe_async DONE: {event_name}.{handler_id}')
+            logger.debug('[EventBus] _safe_async DONE: %s.%s', event_name, handler_id)
         except Exception as e:
-            logger.warning(f'[EventBus] async listener failed: {event_name}.{handler_id}: {e}')
+            logger.warning('[EventBus] async listener failed: %s.%s: %s', event_name, handler_id, e)
 
     @staticmethod
     def _safe_sync(handler: Callable, event_name: str, handler_id: Any, kwargs: dict) -> None:
@@ -108,7 +108,7 @@ class EventBus:
         try:
             handler(**kwargs)
         except Exception as e:
-            logger.warning(f'[EventBus] sync listener failed: {event_name}.{handler_id}: {e}')
+            logger.warning('[EventBus] sync listener failed: %s.%s: %s', event_name, handler_id, e)
 
 
 # ============================================================================

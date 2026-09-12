@@ -12,11 +12,11 @@
 import re
 from datetime import datetime
 
-from app.logger import get_logger
+import logging
 from app.services.inspiration_sub.skill_system import InspirationSkillSystem
 from app.services.inspiration_sub.skill_template import _make_skill_name
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================

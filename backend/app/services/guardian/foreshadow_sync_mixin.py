@@ -14,9 +14,9 @@ from datetime import datetime
 from app.core import json_utils as json
 from app.models.foreshadow import Foreshadow
 from app.services._foreshadow_helpers import generate_stable_foreshadow_id
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class ForeshadowSyncMixin:

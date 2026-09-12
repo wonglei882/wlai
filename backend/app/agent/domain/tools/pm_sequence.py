@@ -6,11 +6,11 @@
 
 from app.agent.core.command_registry import ToolRegistry, ToolDefinition, RiskLevel
 from app.services.json_helper import safe_int, safe_json_loads
-from app.logger import get_logger
+import logging
 from pathlib import Path
 import asyncio
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # ==================== 情绪值 -> 文字描述映射 ====================

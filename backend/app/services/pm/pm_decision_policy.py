@@ -15,10 +15,10 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from app.logger import get_logger
+import logging
 from app.services.pm.feature_config import is_pm_feature_enabled
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # 自主等级 → {auto: 直接执行阈值, suggest: suggestion 降级阈值}
 LEVEL_THRESHOLDS: dict[str, dict[str, float]] = {

@@ -4,9 +4,9 @@ from typing import Any
 from collections.abc import AsyncGenerator
 import httpx
 from app.services.ai.ai_config import AIClientConfig, default_config
-from app.logger import get_logger
+import logging
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class GeminiClient:

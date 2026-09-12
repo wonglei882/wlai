@@ -12,10 +12,10 @@ from app.models.memory import PlotAnalysis, StoryMemory
 from app.models.project import Project
 from app.services.memory_service import memory_service
 from app.schemas.foreshadow import ForeshadowCreate, ForeshadowUpdate, PlantForeshadowRequest, ResolveForeshadowRequest, SyncFromAnalysisRequest
-from app.logger import get_logger
+import logging
 from app.services._foreshadow_helpers import generate_stable_foreshadow_id
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 from app.services.guardian.foreshadow_sync_mixin import ForeshadowSyncMixin  # noqa: E402

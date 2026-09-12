@@ -9,10 +9,10 @@ L4 方向3：经验提炼 + 遗忘
 import re
 import math
 from datetime import datetime
-from app.logger import get_logger
+import logging
 from app.services.pm.feature_config import get_pm_feature_config
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # L4 方向3 常量（相似度阈值/衰减半衰期来自 pm_features.yaml: optional.self_evolution）
 _evolve_cfg = get_pm_feature_config('optional.self_evolution') or {}

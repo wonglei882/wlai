@@ -9,12 +9,12 @@ from __future__ import annotations
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.logger import get_logger
+import logging
 from app.models.pm_decision_log import PMDecisionLog
 from app.models.foreshadow import Foreshadow
 from app.models.pm_consistency_state import PMConsistencyState
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # P2 信息增益排序参数
 _MAX_WARNINGS = 5

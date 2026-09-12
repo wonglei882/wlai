@@ -15,10 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, func as sa_func
 
 from app.database import get_db
-from app.logger import get_logger
+import logging
 from app.models.pm_decision_log import PMDecisionLog
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix='/pm', tags=['PM Agent'])
 

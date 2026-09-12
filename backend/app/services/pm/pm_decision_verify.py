@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy import select, func
 
-from app.logger import get_logger
+import logging
 from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.pm_decision_helpers import _log_decision
 from app.services.pm.pm_fix_handlers import (
@@ -22,7 +22,7 @@ from app.services.pm.pm_fix_handlers import (
     _classify_failure,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def _record_decision_failure(db, project_id: str, diag_type: str, verify_message: str) -> None:

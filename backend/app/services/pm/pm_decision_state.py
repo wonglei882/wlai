@@ -14,10 +14,10 @@ from typing import Any
 
 from sqlalchemy import select, desc
 
-from app.logger import get_logger
+import logging
 from app.models.pm_decision_log import PMDecisionLog
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================

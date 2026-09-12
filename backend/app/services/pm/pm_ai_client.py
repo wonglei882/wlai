@@ -15,13 +15,13 @@ import asyncio
 import time
 from dataclasses import dataclass
 
-from app.logger import get_logger
+import logging
 from app.services.ai.ai_service import AIService
 from app.models.settings import Settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 # TTL：缓存有效期（秒）
 _CACHE_TTL_SECONDS = 10 * 60
