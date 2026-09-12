@@ -23,7 +23,7 @@ def _mask_url(url: str) -> str:
 
 # 数据库配置：PostgreSQL
 # 从环境变量获取数据库URL
-DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql+asyncpg://mumuai:password@localhost:5432/mumuai_novel')
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql+asyncpg://wlai:password@localhost:5432/wlai_novel')
 
 config_logger.debug('数据库类型: PostgreSQL')
 config_logger.debug('数据库URL: %s', _mask_url(DATABASE_URL))
@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     """应用配置"""
 
     # 应用配置
-    app_name: str = 'MuMuAINovel'
+    app_name: str = 'WLAINovel'
     app_version: str = '1.0.0'
     app_host: str = '0.0.0.0'  # noqa: S104  容器化部署默认监听全部网卡，属服务端预期行为
     app_port: int = 8000
@@ -129,7 +129,7 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = False
     SMTP_USE_SSL: bool = True
     SMTP_FROM_EMAIL: str | None = None
-    SMTP_FROM_NAME: str = 'MuMuAINovel'
+    SMTP_FROM_NAME: str = 'WLAINovel'
     EMAIL_AUTH_ENABLED: bool = True
     EMAIL_REGISTER_ENABLED: bool = True
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10
