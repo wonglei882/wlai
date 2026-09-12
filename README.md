@@ -1,11 +1,11 @@
-# MuMuPM-Project
+# WLAI-PM
 
 从 `WLAINovel-main` 提取的 **PM Agent（项目主管 Agent）独立后端模块**，用于代码研究与重构。
 
 ## 项目结构
 
 ```
-D:\ai\MuMuPM-Project\
+D:\ai\wlai-pm\
 ├── backend\
 │   ├── requirements.txt          # Python 依赖
 │   ├── .env.example              # 环境变量模板

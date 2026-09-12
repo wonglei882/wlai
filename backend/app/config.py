@@ -137,7 +137,7 @@ class Settings(BaseSettings):
 
     # 提示词工坊配置
     WORKSHOP_MODE: str = 'client'  # client: 本地部署实例, server: 云端中央服务器
-    WORKSHOP_CLOUD_URL: str = 'https://mumuverse.space:1566'  # 云端服务地址
+    WORKSHOP_CLOUD_URL: str = ''  # 云端服务地址（留空则禁用）
     WORKSHOP_API_TIMEOUT: int = 30  # 云端API请求超时时间（秒）
 
     class Config:

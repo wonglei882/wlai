@@ -1,0 +1,2 @@
+"""Refactoring script."""
+print("hello")

@@ -1,4 +1,4 @@
-# MuMuPM-Project 全面检查报告
+# WLAI-PM 全面检查报告
 
 检查时间：2026-08-24
 检查范围：backend 全量（app 包 + 3 个入口脚本 + scripts 验证脚本）、README、运行环境
@@ -23,7 +23,7 @@
 ## 二、项目结构（已核实）
 
 ```
-MuMuPM-Project/
+wlai-pm/
 ├── README.md                    # 项目说明（结构描述与实际一致）
 ├── backend/
 │   ├── requirements.txt / .env.example
