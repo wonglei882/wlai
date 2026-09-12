@@ -1,6 +1,6 @@
 """伏笔管理 Pydantic Schema"""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import datetime
 from enum import Enum
 
@@ -134,10 +134,7 @@ class ForeshadowResponse(ForeshadowBase):
     planted_at: datetime | None = None
     resolved_at: datetime | None = None
 
-    class Config:
-        """Config"""
-
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ForeshadowListResponse(BaseModel):

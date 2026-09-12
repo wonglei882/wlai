@@ -1,6 +1,6 @@
 """应用配置管理"""
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 import logging
 import os
@@ -140,19 +140,18 @@ class Settings(BaseSettings):
     WORKSHOP_CLOUD_URL: str = ''  # 云端服务地址（留空则禁用）
     WORKSHOP_API_TIMEOUT: int = 30  # 云端API请求超时时间（秒）
 
-    class Config:
-        """Config"""
-
-        env_file = '.env'
-        case_sensitive = False
-        extra = 'ignore'  # 忽略未定义的环境变量，避免验证错误
+    model_config = SettingsConfigDict(
+        env_file='.env',
+        case_sensitive=False,
+        extra='ignore',  # 忽略未定义的环境变量，避免验证错误
+    )
 
 
 # 创建全局配置实例
 settings = Settings()
-config_logger.info(f'配置加载完成: {settings.app_name} v{settings.app_version}')
-config_logger.debug(f'调试模式: {settings.debug}')
-config_logger.debug(f'AI提供商: {settings.default_ai_provider}')
+config_logger.info('配置加载完成: %s v%s', settings.app_name, settings.app_version)
+config_logger.debug('调试模式: %s', settings.debug)
+config_logger.debug('AI提供商: %s', settings.default_ai_provider)
 
 
 # ==================== 提示词工坊实例标识 ====================
@@ -182,9 +181,9 @@ def get_or_create_instance_id() -> str:
     try:
         with open(instance_file, 'w') as f:
             f.write(instance_id)
-        config_logger.info(f'生成新的实例标识: {instance_id}')
+        config_logger.info('生成新的实例标识: %s', instance_id)
     except Exception as e:
-        config_logger.warning(f'无法保存实例标识到文件: {e}')
+        config_logger.warning('无法保存实例标识到文件: %s', e)
 
     return instance_id
 
@@ -197,4 +196,4 @@ def is_workshop_server() -> bool:
     return settings.WORKSHOP_MODE.lower() == 'server'
 
 
-config_logger.info(f'提示词工坊模式: {settings.WORKSHOP_MODE}, 实例ID: {INSTANCE_ID}')
+config_logger.info('提示词工坊模式: %s, 实例ID: %s', settings.WORKSHOP_MODE, INSTANCE_ID)

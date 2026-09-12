@@ -14,7 +14,7 @@ from app.core import json_utils as json
 from pathlib import Path
 import asyncio
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import select
 import logging
 from app.services.inspiration_sub.skill_system import InspirationSkillSystem
@@ -215,9 +215,9 @@ async def _upsert_diagnostic_log(
 
     try:
         # 查是否已有未解决的同类诊断（1 小时内）
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
-        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+        one_hour_ago = datetime.now(tz=timezone.utc) - timedelta(hours=1)
 
         existing_r = await db.execute(
             select(PMDiagnosticLog).where(
@@ -277,7 +277,7 @@ async def _resolve_diagnostic_log(db, diag_type: str, project_id: str, resolved_
             )
             .values(
                 resolved=True,
-                resolved_at=datetime.utcnow(),
+                resolved_at=datetime.now(tz=timezone.utc),
                 resolved_by=resolved_by,
             )
         )

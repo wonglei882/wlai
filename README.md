@@ -78,7 +78,7 @@ D:\ai\wlai-pm\
 ## 说明
 
 - **复制范围**：PM 后端模块（services/pm + 相关 api/models/services 依赖），独立部署所需的入口/迁移/桩模块已补齐。
-- **验证状态**：`check_deps.py` 缺失模块为 0；`smoke_import.py` 27/27 通过；pytest **119 通过**（含 sqlite 集成测试）。
+- **验证状态**：`check_deps.py` 缺失模块为 0；`smoke_import.py` 27/27 通过；pytest **136 通过**（含 sqlite 集成测试）。
 - **独立部署能力**：
   - FastAPI 应用入口 `app/main.py`（含全部 5 组 API 路由 + `/health`）
   - Alembic 数据库迁移（`migrations/`，初始 schema 可建出全部 35 张表）
@@ -111,5 +111,5 @@ cd backend
 python ../scripts/smoke_import.py    # PM 核心模块导入测试
 python ../scripts/smoke_import2.py   # AI/agent/api 模块导入测试
 python ../scripts/check_deps.py      # 静态检查缺失的 app.* 依赖
-python -m pytest tests               # 全量测试（119 个）
+python -m pytest tests               # 全量测试（136 个）
 ```

@@ -54,7 +54,7 @@ async def _execute_pm_tools(
     # 获取 db
     db = getattr(service, 'db_session', None)
     project_id = getattr(service, '_last_project_id', None)
-    logger.warning(f'⚠️ PM工具执行: project_id={project_id}, db={"有" if db else "无"}')
+    logger.debug('PM工具执行: project_id=%s, db=%s', project_id, '有' if db else '无')
 
     user_id = service.user_id
 
@@ -73,7 +73,7 @@ async def _execute_pm_tools(
             arguments = {}
 
         # 🔍 诊断日志：记录工具调用的原始参数
-        logger.warning(f'🔍 PM工具调用: tool={tool_name}, args={arguments}, project_id={project_id}')
+        logger.debug('PM工具调用: tool=%s, args=%s, project_id=%s', tool_name, arguments, project_id)
 
         try:
             executor = CommandExecutor(
@@ -95,7 +95,7 @@ async def _execute_pm_tools(
 
             # 🔍 诊断日志：记录工具返回的内容（前300字）
             result_preview = '\n'.join(logs)[:300]
-            logger.warning(f'✅ PM工具返回 [{tool_name}]: {result_preview}')
+            logger.debug('PM工具返回 [%s]: %s', tool_name, result_preview)
 
             results.append(
                 {
@@ -255,14 +255,14 @@ class AIService:
         同时更新 _tools_loaded 状态，使下次调用时重新检查。
         """
         if self._cached_tools is not None:
-            logger.info(f'🔧 清理MCP工具缓存，移除 {len(self._cached_tools)} 个工具')
+            logger.debug('清理MCP工具缓存，移除 %d 个工具', len(self._cached_tools))
             self._cached_tools = None
         else:
             logger.debug('🔧 MCP工具缓存已经是空，无需清理')
 
         # 更新加载状态，确保下次调用会重新检查
         self._tools_loaded = False
-        logger.debug(f'🔧 MCP工具状态已重置: enable_mcp={self._enable_mcp}, _tools_loaded=False')
+        logger.debug('MCP工具状态已重置: enable_mcp=%s, _tools_loaded=False', self._enable_mcp)
 
     def _get_provider(self, provider: str | None = None) -> BaseAIProvider:
         """获取对应的 Provider"""
@@ -364,7 +364,7 @@ class AIService:
         # 使用缓存（只有 enable_mcp=True 时才使用缓存）
         if self._tools_loaded and not force_refresh:
             if self._cached_tools:
-                logger.debug(f'🔧 使用缓存的MCP工具 ({len(self._cached_tools)}个)')
+                logger.debug('使用缓存的MCP工具 (%d个)', len(self._cached_tools))
             return self._cached_tools
 
         try:
@@ -376,14 +376,14 @@ class AIService:
             self._tools_loaded = True
 
             if self._cached_tools:
-                logger.info(f'🔧 已加载 {len(self._cached_tools)} 个MCP工具')
+                logger.debug('已加载 %d 个MCP工具', len(self._cached_tools))
             else:
-                logger.debug(f'📭 用户 {self.user_id} 没有可用的MCP工具')
+                logger.debug('用户 %s 没有可用的MCP工具', self.user_id)
 
             return self._cached_tools
 
         except Exception as e:
-            logger.warning(f'⚠️ 加载MCP工具失败: {e}')
+            logger.warning('加载MCP工具失败: %s', e)
             self._tools_loaded = True
             self._cached_tools = None
             # 工具加载失败时抛异常，而非静默返回 None（防止用户有工具但被忽略）
@@ -423,7 +423,7 @@ class AIService:
         prompt = original_prompt
 
         for round_num in range(max_rounds):
-            logger.info(f'🔧 工具调用 - 第{round_num + 1}/{max_rounds}轮，{len(tool_calls)}个工具')
+            logger.info('工具调用 - 第%d/%d轮，%d个工具', round_num + 1, max_rounds, len(tool_calls))
             tool_metrics.mcp_rounds += 1
 
             # 分离 MCP 工具和 PM 工具
@@ -438,14 +438,14 @@ class AIService:
                     mcp_results = await mcp_client.batch_call_tools(user_id=self.user_id, tool_calls=mcp_tool_calls)
                     tool_results.extend(mcp_results)
                 except Exception as e:
-                    logger.error(f'❌ MCP工具调用失败: {e}')
+                    logger.error('MCP工具调用失败: %s', e)
 
             # 执行 PM 工具
             if pm_tool_calls:
                 try:
                     tool_results.extend(await _execute_pm_tools(self, pm_tool_calls))
                 except Exception as e:
-                    logger.error(f'❌ PM工具调用失败: {e}')
+                    logger.error('PM工具调用失败: %s', e)
 
             # 记录使用的工具
             for tc in tool_calls:
@@ -634,7 +634,7 @@ class AIService:
         Yields:
             生成的文本块
         """
-        logger.debug(f'🔧 generate_text_stream: auto_mcp={auto_mcp}, tool_choice={tool_choice}')
+        logger.debug('generate_text_stream: auto_mcp=%s, tool_choice=%s', auto_mcp, tool_choice)
 
         tools_to_use = None
 
@@ -642,7 +642,7 @@ class AIService:
         if auto_mcp:
             tools_to_use = await self._prepare_mcp_tools(auto_mcp=auto_mcp)
             if tools_to_use:
-                logger.info(f'🔧 已获取 {len(tools_to_use)} 个MCP工具')
+                logger.debug('已获取 %d 个MCP工具', len(tools_to_use))
 
         metrics = self._build_call_metrics(
             request_mode='流式文本',
@@ -660,7 +660,7 @@ class AIService:
         try:
             # 流式生成（Provider 层处理工具调用）
             prov = self._get_provider(provider)
-            logger.debug(f'🔧 开始流式生成，provider={provider or self.api_provider}, tools_count={len(tools_to_use) if tools_to_use else 0}')
+            logger.debug('开始流式生成，provider=%s, tools_count=%d', provider or self.api_provider, len(tools_to_use) if tools_to_use else 0)
             async for chunk in prov.generate_stream(
                 prompt=prompt,
                 model=model or self.default_model,
@@ -674,7 +674,7 @@ class AIService:
             ):
                 if isinstance(chunk, dict):
                     content_str = chunk.get('content')
-                    logger.warning(f'[DEBUG chunk] dict type={type(content_str)}, content={repr(content_str[:50]) if content_str else "EMPTY/FALSY"}')
+                    logger.debug('[DEBUG chunk] dict type=%s, content=%s', type(content_str), repr(content_str[:50]) if content_str else 'EMPTY/FALSY')
                     if content_str:
                         metrics.mark_first_chunk()
                         metrics.chunk_count += 1

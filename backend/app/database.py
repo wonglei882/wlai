@@ -170,13 +170,19 @@ async def get_engine(user_id: str = None):
                 estimated_concurrent_users = total_connections * 2
 
                 logger.info(
-                    f'📊 PostgreSQL 连接池配置:\n'
-                    f'   ├─ 核心连接: {settings.database_pool_size}\n'
-                    f'   ├─ 溢出连接: {settings.database_max_overflow}\n'
-                    f'   ├─ 总连接数: {total_connections}\n'
-                    f'   ├─ 获取超时: {settings.database_pool_timeout}秒\n'
-                    f'   ├─ 连接回收: {settings.database_pool_recycle}秒\n'
-                    f'   └─ 预估并发: {estimated_concurrent_users}+用户'
+                    'PostgreSQL 连接池配置:\n'
+                    '   ├─ 核心连接: %d\n'
+                    '   ├─ 溢出连接: %d\n'
+                    '   ├─ 总连接数: %d\n'
+                    '   ├─ 获取超时: %d秒\n'
+                    '   ├─ 连接回收: %d秒\n'
+                    '   └─ 预估并发: %d+用户',
+                    settings.database_pool_size,
+                    settings.database_max_overflow,
+                    total_connections,
+                    settings.database_pool_timeout,
+                    settings.database_pool_recycle,
+                    estimated_concurrent_users,
                 )
 
             engine = create_async_engine(settings.database_url, **engine_args)
@@ -196,9 +202,9 @@ async def get_engine(user_id: str = None):
                         cursor.execute('PRAGMA busy_timeout=30000')  # 30秒超时
                         cursor.close()
 
-                    logger.info('✅ SQLite WAL 模式已启用（支持读写并发）')
+                    logger.info('SQLite WAL 模式已启用（支持读写并发）')
                 except Exception as e:
-                    logger.warning(f'⚠️ 启用 WAL 模式失败: {e}，使用默认配置')
+                    logger.warning('启用 WAL 模式失败: %s，使用默认配置', e)
 
         return _engine_cache[cache_key]
 
@@ -214,28 +220,10 @@ async def get_db(request: Request):
         raise HTTPException(status_code=401, detail='未登录或用户ID缺失')
 
     engine = await get_engine(user_id)
-
-    # 缓存并复用 sessionmaker
-    _sm_cache_key = f'sm_{id(engine)}'
-    if _sm_cache_key in _session_maker_cache:
-        AsyncSessionLocal = _session_maker_cache[_sm_cache_key]
-    else:
-        async with _session_maker_lock:
-            if _sm_cache_key not in _session_maker_cache:
-                AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-                _session_maker_cache[_sm_cache_key] = AsyncSessionLocal
-            else:
-                AsyncSessionLocal = _session_maker_cache[_sm_cache_key]
-
+    AsyncSessionLocal = _get_or_create_session_maker(engine)
     session = AsyncSessionLocal()
     session_id = id(session)
-
-    global _session_stats
-    async with _session_stats_lock:
-        _session_stats['created'] += 1
-        _session_stats['active'] += 1
-
-    # logger.debug(f"📊 会话创建 [User:{user_id}][ID:{session_id}] - 活跃:{_session_stats['active']}, 总创建:{_session_stats['created']}, 总关闭:{_session_stats['closed']}")  # noqa: E501
+    await _track_session_created()
 
     # 修复连接池复用导致的事务中止
     try:
@@ -244,86 +232,40 @@ async def get_db(request: Request):
         try:
             await session.execute(_text('ROLLBACK'))
         except Exception as e:
-            logger.warning(f'[database] get_db 失败: {e}')
+            logger.warning('[database] get_db ROLLBACK: %s', e)
         yield session
         if session.in_transaction():
             await session.rollback()
     except GeneratorExit:
         async with _session_stats_lock:
             _session_stats['generator_exits'] += 1
-        logger.warning(f'⚠️ GeneratorExit [User:{user_id}][ID:{session_id}] - SSE连接断开（总计:{_session_stats["generator_exits"]}次）')
+        logger.warning('GeneratorExit [User:%s][ID:%s] - SSE连接断开', user_id, session_id)
         try:
             if session.in_transaction():
                 await session.rollback()
-                logger.info(f'✅ 事务已回滚 [User:{user_id}][ID:{session_id}]（GeneratorExit）')
+                logger.info('事务已回滚 [User:%s][ID:%s]（GeneratorExit）', user_id, session_id)
         except Exception as rollback_error:
-            async with _session_stats_lock:
-                _session_stats['errors'] += 1
-            logger.error(f'❌ GeneratorExit回滚失败 [User:{user_id}][ID:{session_id}]: {str(rollback_error)}')
+            await _track_error()
+            logger.error('GeneratorExit回滚失败 [User:%s][ID:%s]: %s', user_id, session_id, rollback_error)
     except Exception as e:
-        async with _session_stats_lock:
-            _session_stats['errors'] += 1
-        logger.error(f'❌ 会话异常 [User:{user_id}][ID:{session_id}]: {str(e)}')
+        await _track_error()
+        logger.error('会话异常 [User:%s][ID:%s]: %s', user_id, session_id, e)
         try:
             if session.in_transaction():
                 await session.rollback()
-                logger.info(f'✅ 事务已回滚 [User:{user_id}][ID:{session_id}]（异常）')
+                logger.info('事务已回滚 [User:%s][ID:%s]（异常）', user_id, session_id)
         except Exception as rollback_error:
-            logger.error(f'❌ 异常回滚失败 [User:{user_id}][ID:{session_id}]: {str(rollback_error)}')
+            logger.error('异常回滚失败 [User:%s][ID:%s]: %s', user_id, session_id, rollback_error)
         raise
     finally:
-        try:
-            if session.in_transaction():
-                await session.rollback()
-                logger.warning(f'⚠️ finally中发现未提交事务 [User:{user_id}][ID:{session_id}]，已回滚')
-
-            await session.close()
-
-            async with _session_stats_lock:
-                _session_stats['closed'] += 1
-                _session_stats['active'] -= 1
-                _session_stats['last_check'] = datetime.now().isoformat()
-                _active = _session_stats['active']
-
-            # logger.debug(f"📊 会话关闭 [User:{user_id}][ID:{session_id}] - 活跃:{_session_stats['active']}, 总创建:{_session_stats['created']}, 总关闭:{_session_stats['closed']}, 错误:{_session_stats['errors']}")  # noqa: E501
-
-            # 使用优化后的会话监控阈值
-            if _active > settings.database_session_leak_threshold:
-                logger.error(f'🚨 严重告警：活跃会话数 {_session_stats["active"]} 超过泄漏阈值 {settings.database_session_leak_threshold}！')
-            elif _session_stats['active'] > settings.database_session_max_active:
-                logger.warning(
-                    f'⚠️ 警告：活跃会话数 {_session_stats["active"]} 超过警告阈值 {settings.database_session_max_active}，可能存在连接泄漏！'
-                )
-            elif _session_stats['active'] < 0:
-                logger.error(f'🚨 活跃会话数异常: {_session_stats["active"]}，统计可能不准确！')
-
-        except Exception as e:
-            async with _session_stats_lock:
-                _session_stats['errors'] += 1
-            logger.error(f'❌ 关闭会话时出错 [User:{user_id}][ID:{session_id}]: {str(e)}', exc_info=True)
-            try:
-                await session.close()
-            except Exception as e:
-                logger.warning(f'[SessionMgr] session.close 失败: {e}')
+        await _close_session(session, user_id, session_id)
 
 
 async def get_db_session(user_id: str):
     """后台任务专用：根据 user_id 创建独立数据库会话（复用 sessionmaker 缓存）"""
     engine = await get_engine(user_id)
-
-    _sm_cache_key = f'sm_{id(engine)}'
-    if _sm_cache_key in _session_maker_cache:
-        AsyncSessionLocal = _session_maker_cache[_sm_cache_key]
-    else:
-        async with _session_maker_lock:
-            if _sm_cache_key not in _session_maker_cache:
-                AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-                _session_maker_cache[_sm_cache_key] = AsyncSessionLocal
-            else:
-                AsyncSessionLocal = _session_maker_cache[_sm_cache_key]
-
-    session = AsyncSessionLocal()
-    return session
+    AsyncSessionLocal = _get_or_create_session_maker(engine)
+    return AsyncSessionLocal()
 
 
 async def init_db(user_id: str = None):
@@ -348,12 +290,12 @@ async def close_db():
         logger.info('正在关闭所有数据库连接...')
         for user_id, engine in _engine_cache.items():
             await engine.dispose()
-            logger.info(f'用户 {user_id} 的数据库连接已关闭')
+            logger.info('用户 %s 的数据库连接已关闭', user_id)
         _engine_cache.clear()
         _session_maker_cache.clear()
         logger.info('所有数据库连接和 sessionmaker 缓存已关闭')
     except Exception as e:
-        logger.error(f'关闭数据库连接失败: {str(e)}', exc_info=True)
+        logger.error('关闭数据库连接失败: %s', e, exc_info=True)
         raise
 
 
@@ -380,7 +322,7 @@ async def get_database_stats():
                 'usage_percent': (pool.checkedout() / (settings.database_pool_size + settings.database_max_overflow)) * 100,
             }
         except Exception as e:
-            logger.warning(f'获取连接池状态失败: {e}')
+            logger.warning('获取连接池状态失败: %s', e)
             pool_stats = {'error': str(e)}
 
     stats = {
@@ -498,7 +440,7 @@ async def check_database_health(user_id: str = None) -> dict:
     except Exception as e:
         result['healthy'] = False
         result['checks']['error'] = {'status': 'error', 'message': str(e), 'healthy': False}
-        logger.error(f'数据库健康检查失败: {str(e)}', exc_info=True)
+        logger.error('数据库健康检查失败: %s', e, exc_info=True)
 
     return result
 
@@ -508,5 +450,5 @@ async def reset_session_stats():
     global _session_stats
     async with _session_stats_lock:
         _session_stats = {'created': 0, 'closed': 0, 'active': 0, 'errors': 0, 'generator_exits': 0, 'last_check': datetime.now().isoformat()}
-    logger.info('✅ 会话统计信息已重置')
+    logger.info('会话统计信息已重置')
     return _session_stats
