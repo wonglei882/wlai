@@ -46,6 +46,7 @@ from app.models.comic_bible import (
 )
 from app.models.comic_shot import Storyboard, Shot, ShotAsset
 from app.models.comic_review import ReviewCheckpoint
+from app.models.task import AsyncTask
 
 __all__ = [
     'Base',
@@ -96,4 +97,5 @@ __all__ = [
     'Shot',
     'ShotAsset',
     'ReviewCheckpoint',
+    'AsyncTask',
 ]

@@ -1,0 +1,42 @@
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "BLE"]
+ignore = [
+    "E501",   # 允许长行（由编辑器处理）
+    "B008",   # 允许 Depends() 等函数默认值
+    "BLE001", # 允许 broad except（部分场景需要）
+    "SIM105", # 允许 try/except pass（比 contextlib.suppress 更直观）
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["BLE", "S101"]  # 测试允许 broad except 和 assert
+"migrations/**" = ["E501", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false  # 渐进式，先不强制
+
+[[tool.mypy.overrides]]
+module = ["app.core.*", "app.api.v1.deps", "app.services.multimodal.*"]
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*", "migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 0  # 暂不设阈值，逐步提升

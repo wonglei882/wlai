@@ -12,9 +12,13 @@ import json
 import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.api.v1.deps import get_current_user_id, get_db_session_depends
+from app.core.exceptions import NotFoundError
 
 import logging
 
@@ -55,14 +59,6 @@ class WebhookResponse(BaseModel):
 # 辅助函数
 # =============================================================================
 
-
-def _get_user_id(request: Request) -> str:
-    user_id = getattr(request.state, 'user_id', None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail='未登录或用户 ID 缺失')
-    return user_id
-
-
 def sign_payload(secret: str, payload: dict) -> str:
     """生成 HMAC-SHA256 签名。"""
     body = json.dumps(payload, sort_keys=True, ensure_ascii=False)
@@ -74,11 +70,7 @@ def sign_payload(secret: str, payload: dict) -> str:
 
 
 async def fire_webhook(webhook, event_type: str, payload: dict) -> bool:
-    """触发 Webhook 回调（带 HMAC 签名）。
-
-    Returns:
-        是否成功
-    """
+    """触发 Webhook 回调（带 HMAC 签名）。"""
     import httpx
 
     signature = sign_payload(webhook.secret, payload)
@@ -109,108 +101,84 @@ async def fire_webhook(webhook, event_type: str, payload: dict) -> bool:
 @router.post('', response_model=WebhookResponse)
 async def create_webhook(
     body: WebhookCreateRequest,
-    request: Request,
+    db: AsyncSession = Depends(get_db_session_depends),
+    user_id: str = Depends(get_current_user_id),
 ):
     """注册 Webhook 回调。"""
     from app.models.webhook import WebhookConfig
-    from app.database import get_db_session
 
-    user_id = _get_user_id(request)
-    db = await get_db_session(user_id)
-    try:
-        webhook = WebhookConfig(
-            project_id=body.project_id,
-            user_id=user_id,
-            url=body.url,
-            events=body.events,
-            secret=body.secret,
-            description=body.description,
-        )
-        db.add(webhook)
-        await db.commit()
-        await db.refresh(webhook)
+    webhook = WebhookConfig(
+        project_id=body.project_id,
+        user_id=user_id,
+        url=body.url,
+        events=body.events,
+        secret=body.secret,
+        description=body.description,
+    )
+    db.add(webhook)
+    await db.commit()
+    await db.refresh(webhook)
 
-        logger.info('[CA] Webhook 注册成功: id=%s url=%s', webhook.id, body.url[:50])
-        return WebhookResponse(
-            id=webhook.id,
-            project_id=webhook.project_id,
-            url=webhook.url,
-            events=webhook.events,
-            is_active=webhook.is_active,
-            created_at=str(webhook.created_at or ''),
-        )
-    except Exception as e:
-        await db.rollback()
-        logger.error('[CA] Webhook 注册失败: %s', e)
-        raise HTTPException(status_code=500, detail=f'注册失败: {e}')
-    finally:
-        await db.close()
+    logger.info('[CA] Webhook 注册成功: id=%s url=%s', webhook.id, body.url[:50])
+    return WebhookResponse(
+        id=webhook.id,
+        project_id=webhook.project_id,
+        url=webhook.url,
+        events=webhook.events,
+        is_active=webhook.is_active,
+        created_at=str(webhook.created_at or ''),
+    )
 
 
 @router.get('', response_model=list[WebhookResponse])
 async def list_webhooks(
-    request: Request,
-    project_id: str,
+    db: AsyncSession = Depends(get_db_session_depends),
+    user_id: str = Depends(get_current_user_id),
+    project_id: str = None,
 ):
     """查询已注册的 Webhook 列表。"""
     from app.models.webhook import WebhookConfig
-    from app.database import get_db_session
 
-    user_id = _get_user_id(request)
-    db = await get_db_session(user_id)
-    try:
-        result = await db.execute(
-            select(WebhookConfig).where(
-                WebhookConfig.project_id == project_id,
-                WebhookConfig.user_id == user_id,
+    result = await db.execute(
+        select(WebhookConfig).where(
+            WebhookConfig.project_id == project_id,
+            WebhookConfig.user_id == user_id,
+        )
+    )
+    webhooks = []
+    for wh in result.scalars().all():
+        webhooks.append(
+            WebhookResponse(
+                id=wh.id,
+                project_id=wh.project_id,
+                url=wh.url,
+                events=wh.events,
+                is_active=wh.is_active,
+                last_triggered_at=str(wh.last_triggered_at) if wh.last_triggered_at else None,
+                last_status=wh.last_status,
+                created_at=str(wh.created_at or ''),
             )
         )
-        webhooks = []
-        for wh in result.scalars().all():
-            webhooks.append(
-                WebhookResponse(
-                    id=wh.id,
-                    project_id=wh.project_id,
-                    url=wh.url,
-                    events=wh.events,
-                    is_active=wh.is_active,
-                    last_triggered_at=str(wh.last_triggered_at) if wh.last_triggered_at else None,
-                    last_status=wh.last_status,
-                    created_at=str(wh.created_at or ''),
-                )
-            )
-        return webhooks
-    finally:
-        await db.close()
+    return webhooks
 
 
 @router.delete('/{webhook_id}')
 async def delete_webhook(
     webhook_id: str,
-    request: Request,
+    db: AsyncSession = Depends(get_db_session_depends),
+    user_id: str = Depends(get_current_user_id),
 ):
     """删除 Webhook。"""
     from app.models.webhook import WebhookConfig
-    from app.database import get_db_session
     from sqlalchemy import delete
 
-    user_id = _get_user_id(request)
-    db = await get_db_session(user_id)
-    try:
-        result = await db.execute(
-            delete(WebhookConfig).where(
-                WebhookConfig.id == webhook_id,
-                WebhookConfig.user_id == user_id,
-            )
+    result = await db.execute(
+        delete(WebhookConfig).where(
+            WebhookConfig.id == webhook_id,
+            WebhookConfig.user_id == user_id,
         )
-        await db.commit()
-        if result.rowcount == 0:
-            raise HTTPException(status_code=404, detail='Webhook 不存在')
-        return {'status': 'deleted', 'id': webhook_id}
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        raise HTTPException(status_code=500, detail=f'删除失败: {e}')
-    finally:
-        await db.close()
+    )
+    await db.commit()
+    if result.rowcount == 0:
+        raise NotFoundError('Webhook', webhook_id)
+    return {'status': 'deleted', 'id': webhook_id}

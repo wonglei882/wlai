@@ -1,6 +1,6 @@
-# WLai-PM
+# WLai
 
-**通用 AI 内容一致性 Agent + AI 漫剧制片 Agent**
+**AI 内容一致性守护平台 + AI 漫剧制片**
 
 两大产品线：
 1. **ConsistencyAgent** — 通用内容一致性守护（长篇小说 + 漫剧），检测并修复 AI 生成内容中的一致性问题
@@ -10,10 +10,57 @@
 
 ---
 
+## 快速开始（Docker 一键部署）
+
+### 系统要求
+
+- Docker 20+ 和 Docker Compose v2+
+- 4GB+ 内存
+- AI 提供商 API Key（OpenAI / Anthropic / Gemini）
+
+### 3 步启动
+
+```bash
+# 1. 克隆项目
+git clone <repo-url> && cd MuMuPM-Project
+
+# 2. 运行启动脚本（首次会引导配置 .env）
+#    Linux/Mac:
+bash start.sh
+#    Windows:
+.\start.ps1
+
+# 3. 编辑 .env 填入 API Key 后再次运行启动脚本
+```
+
+启动后访问：
+- **前端界面**: http://localhost:3000
+- **后端 API**: http://localhost:8000
+- **API 文档**: http://localhost:8000/docs
+
+### 手动 Docker 部署
+
+```bash
+cp backend/.env.example .env
+# 编辑 .env 填入 OPENAI_API_KEY 等配置
+docker compose up -d
+```
+
+---
+
 ## 项目结构
 
 ```
-backend\
+frontend\                        # ★ Next.js 前端
+├── src/
+│   ├── app/                     # App Router 页面
+│   ├── components/              # UI 组件 (shadcn/ui)
+│   ├── lib/                     # API 客户端 + 工具函数
+│   ├── store/                   # Zustand 状态管理
+│   └── types/                   # TypeScript 类型定义
+├── Dockerfile
+└── package.json
+backend\                         # FastAPI 后端
 ├── requirements.txt              # Python 依赖
 ├── requirements-full.txt         # 重依赖（向量库/ML/NLP/可视化）
 ├── .env.example                  # 环境变量模板
@@ -134,7 +181,9 @@ MVP 已实现（数据层 + API）：
 
 ---
 
-## 独立部署
+## 独立部署（不使用 Docker）
+
+### 后端
 
 ```bash
 cd backend
@@ -146,9 +195,17 @@ alembic upgrade head
 
 # 启动 API 服务
 uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
-# 或仅运行 PM 巡检（无需 Web 服务）
-python run_pm_inspection.py --project-id <PROJECT_ID>
+### 前端
+
+```bash
+cd frontend
+npm install
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+npm run dev                        # 开发模式 http://localhost:3000
+# 或
+npm run build && npm start         # 生产模式
 ```
 
 ## 验证脚本
@@ -164,7 +221,10 @@ python -m pytest tests               # 全量测试（136 个）
 ## 说明
 
 - **开源协议**：GPL v3
-- **验证状态**：pytest **136 通过**，1 warning（第三方 jieba pkg_resources）
+- **验证状态**：pytest **237 通过**
 - **数据库**：PostgreSQL（必须），Redis（可选，未配置时自动降级）
 - **AI 模型**：支持 OpenAI / Anthropic / Gemini，通过环境变量切换
+- **多模态**：支持 none / cloud / local 三后端可插拔配置
+- **前端**：Next.js 14 + React 19 + Tailwind CSS + shadcn/ui
+- **部署**：Docker Compose 一键启动（前端 + 后端 + PostgreSQL + Redis）
 - **向后兼容**：现有 PM Agent API（`/api/pm/*`）完全保留，新增 `/api/v1/*` 并行

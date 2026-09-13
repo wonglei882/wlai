@@ -6,10 +6,13 @@
     uvicorn app.main:app --reload
 """
 import logging
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import settings
 
@@ -62,6 +65,22 @@ def create_app() -> FastAPI:
         allow_headers=['*'],
     )
 
+    # ── 请求耗时中间件 ─────────────────────────────────────────────
+    class ProcessTimeMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            start = time.perf_counter()
+            response = await call_next(request)
+            elapsed_ms = round((time.perf_counter() - start) * 1000, 2)
+            response.headers['X-Process-Time'] = f'{elapsed_ms}ms'
+            if elapsed_ms > settings.database_slow_query_threshold * 1000:
+                logger.warning(
+                    '[SlowRequest] %s %s %.0fms',
+                    request.method, request.url.path, elapsed_ms,
+                )
+            return response
+
+    app.add_middleware(ProcessTimeMiddleware)
+
     from app.api.companion import router as companion_router
     from app.api.pm import router as pm_router
     from app.api.pm_control import router as pm_control_router
@@ -73,9 +92,14 @@ def create_app() -> FastAPI:
     from app.api.v1.reports import router as v1_reports_router
     from app.api.v1.webhooks import router as v1_webhooks_router
 
-    # API v1 — 漫剧制片 Agent 接口
+    # API v1 — 漫剧制片 Agent 路由
     from app.api.v1.comic_bible import router as v1_comic_bible_router
     from app.api.v1.comic_storyboard import router as v1_comic_storyboard_router
+    from app.api.v1.tasks import router as v1_tasks_router
+    from app.api.v1.ws import router as v1_ws_router
+    
+    # API v1 — 小说章节路由
+    from app.api.v1.novel_chapters import router as v1_novel_chapters_router
 
     # 现有 PM 路由（向后兼容）
     app.include_router(pm_router)
@@ -92,11 +116,40 @@ def create_app() -> FastAPI:
     # API v1 — 漫剧制片 Agent 路由
     app.include_router(v1_comic_bible_router)
     app.include_router(v1_comic_storyboard_router)
+    app.include_router(v1_tasks_router)
+    app.include_router(v1_ws_router)
+    app.include_router(v1_novel_chapters_router)
 
-    @app.get('/health', tags=['system'])
-    async def health():
-        """健康检查。"""
-        return {'status': 'ok', 'service': 'consistency-agent', 'version': '2.0.0'}
+    # 健康检查路由
+    from app.api.health import router as health_router
+    app.include_router(health_router)
+
+    # ── 全局异常处理器 ──────────────────────────────────────────
+    from app.core.exceptions import BusinessException
+
+    @app.exception_handler(BusinessException)
+    async def business_exception_handler(request: Request, exc: BusinessException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={'error': exc.code, 'message': exc.message},
+        )
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logger.exception('Unhandled exception: %s', exc)
+        return JSONResponse(
+            status_code=500,
+            content={'error': 'internal_server_error', 'message': '服务内部错误，请稍后重试'},
+        )
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        # 4xx 返回原始 detail，5xx 隐藏内部信息
+        detail = exc.detail if exc.status_code < 500 else '服务内部错误'
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={'error': detail},
+        )
 
     return app
 

@@ -65,6 +65,7 @@ class Shot(Base):
         String(36), ForeignKey('comic_episodes.id', ondelete='SET NULL'),
         nullable=True,
     )
+    user_id = Column(String(100), nullable=False, index=True)
 
     # 镜头描述
     shot_number = Column(Integer, nullable=False, comment='镜号')
@@ -82,6 +83,9 @@ class Shot(Base):
     negative_prompt = Column(Text, comment='编译后的负面词')
     seed = Column(Integer, comment='使用的种子')
     retry_count = Column(Integer, default=0, comment='重试次数')
+    corrected_prompt = Column(Text, nullable=True, comment='修正后的提示词（视觉重试时注入）')
+    last_consistency_score = Column(Float, nullable=True, comment='最近一次视觉一致性评分')
+    metadata_json = Column(JSON, default=dict, comment='扩展元数据（匹配角色/钩子标记等）')
 
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
@@ -107,6 +111,7 @@ class ShotAsset(Base):
         String(36), ForeignKey('projects.id', ondelete='CASCADE'),
         nullable=False, index=True,
     )
+    user_id = Column(String(100), nullable=False, index=True)
 
     asset_type = Column(String(20), nullable=False, comment='image/video/voice/subtitle/bgm')
     version = Column(Integer, default=1, comment='版本号')

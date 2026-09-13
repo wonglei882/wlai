@@ -104,6 +104,7 @@ class ArtStyleCard(Base):
         String(36), ForeignKey('projects.id', ondelete='CASCADE'),
         nullable=False, index=True,
     )
+    user_id = Column(String(100), nullable=False, index=True)
 
     style_name = Column(String(100), nullable=False, comment='风格名称（日系赛璐璐/国漫/厚涂/水彩）')
     color_palette = Column(JSON, default=dict, comment='色调配置')

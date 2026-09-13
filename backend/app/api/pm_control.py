@@ -276,6 +276,7 @@ async def get_pm_status():
 
         health = get_pm_health()
     except Exception as e:
-        health = {'error': f'健康检查获取失败: {e}'}
+        logger.warning('[PM-Control] 健康检查获取失败: %s', e)
+        health = {'error': '健康检查不可用'}
 
     return {**status, 'health': health}

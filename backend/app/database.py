@@ -209,7 +209,7 @@ async def get_engine(user_id: str = None):
         return _engine_cache[cache_key]
 
 
-async def get_db(request: Request):
+async def get_db(request: Request) -> AsyncSession:
     """获取数据库会话的依赖函数
 
     从 request.state.user_id 获取用户ID，然后返回该用户的数据库会话
@@ -452,3 +452,18 @@ async def reset_session_stats():
         _session_stats = {'created': 0, 'closed': 0, 'active': 0, 'errors': 0, 'generator_exits': 0, 'last_check': datetime.now().isoformat()}
     logger.info('会话统计信息已重置')
     return _session_stats
+
+
+async def get_db_session_for_health():
+    """健康检查专用会话生成器 — 不依赖 Request 上下文。
+
+    使用默认数据库 URL 创建一次性会话，用完即关。
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+
+    engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True)
+    async with AsyncSession(engine) as session:
+        try:
+            yield session
+        finally:
+            await engine.dispose()

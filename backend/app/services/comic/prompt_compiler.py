@@ -110,6 +110,57 @@ class PromptCompiler:
             },
         }
 
+    async def compile_with_ai(
+        self,
+        shot: dict[str, Any],
+        character_cards: list[dict[str, Any]],
+        style: dict[str, Any],
+        negative_lib: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """AI 增强编译：让 LLM 理解场景后优化提示词。
+
+        先调用 compile_shot_prompt 生成基础提示词，
+        再调用 LLM 优化（确保角色外貌一致、场景合理）。
+        """
+        # 1. 先生成基础提示词
+        base = await self.compile_shot_prompt(shot, character_cards, style, negative_lib)
+
+        # 2. 调用 LLM 优化
+        try:
+            from app.services.ai.ai_service import AIService
+            ai_service = AIService()
+
+            char_descs = []
+            for c in character_cards:
+                name = c.get('name', '')
+                appearance = c.get('appearance_prompt', '') or self._build_character_description(c)
+                if name and appearance:
+                    char_descs.append(f'{name}: {appearance}')
+
+            optimize_prompt = f"""优化以下出图提示词，确保:
+1. 角色外貌描述准确一致
+2. 场景氛围合理
+3. 适合 AI 出图（简洁、关键词化）
+
+角色设定:
+{chr(10).join(char_descs) if char_descs else '无特定角色'}
+
+画风: {style.get('style_name', '未指定')}
+
+原始提示词:
+{base['positive']}
+
+输出优化后的英文提示词（只输出提示词本身）："""
+
+            optimized_text = await ai_service.generate_text(optimize_prompt, temperature=0.4)
+            if optimized_text and len(optimized_text.strip()) > 10:
+                base['positive'] = optimized_text.strip()
+                base['metadata']['ai_optimized'] = True
+        except Exception as e:
+            logger.warning('[PromptCompiler] AI 优化失败，使用基础提示词: %s', e)
+
+        return base
+
     async def compile_for_platform(self, compiled: dict[str, Any], platform: str) -> str:
         """将编译结果适配为不同平台格式。
 

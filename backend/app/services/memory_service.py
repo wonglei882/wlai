@@ -125,29 +125,36 @@ class MemoryService:
                 model_cache_dir = os.environ.get('SENTENCE_TRANSFORMERS_HOME', 'embedding')
                 os.makedirs(model_cache_dir, exist_ok=True)
                 abs_cache_dir = os.path.abspath(model_cache_dir)
-                local_model_path = os.path.join(abs_cache_dir, 'models--moka-ai--m3e-base')
+
+                # 从配置读取模型名称（默认 BAAI/bge-m3）
+                from app.config import settings
+                primary_model = settings.embedding_model  # 'BAAI/bge-m3'
+                fallback_model = settings.embedding_fallback  # 'moka-ai/m3e-base'
+                model_dir_name = primary_model.replace('/', '--')
+                local_model_path = os.path.join(abs_cache_dir, f'models--{model_dir_name}')
                 snapshots_dir = os.path.join(local_model_path, 'snapshots')
                 has_valid_model = os.path.exists(snapshots_dir) and bool(os.listdir(snapshots_dir))
                 try:
                     if has_valid_model:
-                        logger.info('✅ 检测到完整本地模型，使用离线模式加载')
+                        logger.info('✅ 检测到完整本地模型 %s，使用离线模式加载', primary_model)
                         self.embedding_model = SentenceTransformer(
-                            'moka-ai/m3e-base', cache_folder=abs_cache_dir, device='cpu', local_files_only=True
+                            primary_model, cache_folder=abs_cache_dir, device='cpu', local_files_only=True
                         )
-                        logger.info('✅ Embedding模型加载成功 (离线模式)')
+                        logger.info('✅ Embedding模型加载成功 (离线模式): %s', primary_model)
                     else:
-                        logger.info('📥 本地模型不完整，联网下载...')
+                        logger.info('📥 本地模型不完整，联网下载 %s...', primary_model)
                         self.embedding_model = SentenceTransformer(
-                            'moka-ai/m3e-base', cache_folder=abs_cache_dir, device='cpu', local_files_only=False
+                            primary_model, cache_folder=abs_cache_dir, device='cpu', local_files_only=False
                         )
-                        logger.info('✅ Embedding模型加载成功 (在线下载)')
+                        logger.info('✅ Embedding模型加载成功 (在线下载): %s', primary_model)
                 except Exception as e:
-                    logger.warning(f'⚠️ 主模型加载失败: {e}')
+                    logger.warning(f'⚠️ 主模型 {primary_model} 加载失败: {e}')
                     try:
+                        logger.info('🔄 尝试加载备用模型 %s...', fallback_model)
                         self.embedding_model = SentenceTransformer(
-                            'thenlper/gte-small-zh', cache_folder=model_cache_dir, device='cpu', trust_remote_code=False
+                            fallback_model, cache_folder=abs_cache_dir, device='cpu', local_files_only=False
                         )
-                        logger.info('✅ 使用备用模型 (gte-small-zh)')
+                        logger.info('✅ 使用备用模型 (%s)', fallback_model)
                     except Exception as e2:
                         logger.error(f'❌ 所有模型加载失败: {e2}')
                         raise RuntimeError('无法加载任何Embedding模型') from e2

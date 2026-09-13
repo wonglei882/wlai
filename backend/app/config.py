@@ -135,6 +135,24 @@ class Settings(BaseSettings):
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10
     EMAIL_VERIFICATION_RESEND_INTERVAL_SECONDS: int = 60
 
+    # 向量模型配置
+    embedding_model: str = 'BAAI/bge-m3'
+    embedding_dimension: int = 1024
+    embedding_fallback: str = 'moka-ai/m3e-base'
+
+    # 多模态模型配置
+    # multimodal_backend: 'none' | 'cloud' | 'local'
+    #   none  — 禁用多模态，视觉审核仅用文本规则
+    #   cloud — 调用云端多模态 API（OpenAI GPT-4o / Gemini Vision 等）
+    #   local — 本地推理（Qwen2.5-VL / LLaVA 等，需 GPU）
+    multimodal_backend: str = 'none'
+    # 云端多模态配置（复用已有 AI 提供商，也可单独指定）
+    multimodal_cloud_provider: str = 'openai'  # openai / gemini / anthropic
+    multimodal_cloud_model: str = 'gpt-4o'  # 支持视觉的模型
+    # 本地多模态配置
+    multimodal_local_model: str = 'Qwen/Qwen2.5-VL-7B-Instruct'
+    multimodal_local_device: str = 'cuda'  # cuda / cpu / mps
+
     # 提示词工坊配置
     WORKSHOP_MODE: str = 'client'  # client: 本地部署实例, server: 云端中央服务器
     WORKSHOP_CLOUD_URL: str = ''  # 云端服务地址（留空则禁用）

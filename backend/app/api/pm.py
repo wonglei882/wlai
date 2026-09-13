@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, desc, func as sa_func
 
 from app.database import get_db
+from app.core.exceptions import SystemException
 import logging
 from app.models.pm_decision_log import PMDecisionLog
 
@@ -220,8 +221,8 @@ async def trigger_rerun():
             'decisions_made': total_decisions,
         }
     except Exception as e:
-        logger.warning(f'[PM-Agent API] 手动触发巡检异常: {e}')
-        raise HTTPException(status_code=500, detail=f'巡检触发失败: {e}') from e
+        logger.warning('[PM-Agent API] 手动触发巡检异常: %s', e)
+        raise SystemException('巡检触发失败') from e
 
 
 # =============================================================================
@@ -256,8 +257,8 @@ async def proactive_inspect(
             'report': report,
         }
     except Exception as e:
-        logger.warning(f'[PM巡检] API 调用失败: {e}')
-        raise HTTPException(status_code=500, detail=f'巡检失败: {e}') from e
+        logger.warning('[PM巡检] API 调用失败: %s', e)
+        raise SystemException('巡检失败') from e
 
 
 # =============================================================================
@@ -284,8 +285,8 @@ async def get_proactive_report(
         report = await reporter.check(project_id, user_id, db)
         return {'status': 'ok', 'report': report.to_response()}
     except Exception as e:
-        logger.warning(f'[PM] 主动汇报器 API 调用失败: {e}')
-        raise HTTPException(status_code=500, detail=f'主动汇报器调用失败: {e}') from e
+        logger.warning('[PM] 主动汇报器 API 调用失败: %s', e)
+        raise SystemException('主动汇报器调用失败') from e
 
 
 @router.get('/suggestions/{project_id}', summary='主动建议 — 生成写作建议')
@@ -302,8 +303,8 @@ async def get_proactive_suggestions(
         suggestions = await generate_proactive_suggestions(project_id, db)
         return {'status': 'ok', 'suggestions': suggestions, 'total': len(suggestions)}
     except Exception as e:
-        logger.warning(f'[PM] 主动建议 API 调用失败: {e}')
-        raise HTTPException(status_code=500, detail=f'主动建议调用失败: {e}') from e
+        logger.warning('[PM] 主动建议 API 调用失败: %s', e)
+        raise SystemException('主动建议调用失败') from e
 
 
 # =============================================================================
@@ -454,8 +455,8 @@ async def submit_clarification(
             'result': '\n'.join(logs[0]) if logs else '执行完成',
         }
     except Exception as e:
-        logger.warning(f'[PM澄清] 执行失败: {e}')
-        raise HTTPException(status_code=500, detail=f'执行失败: {e}') from e
+        logger.warning('[PM澄清] 执行失败: %s', e)
+        raise SystemException('执行失败') from e
 
 
 # =============================================================================

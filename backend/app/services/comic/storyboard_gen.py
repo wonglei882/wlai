@@ -1,11 +1,8 @@
-"""分镜生成器（规则版 MVP） — 将小说/故事文本转换为分镜表。
+"""分镜生成器 — 将小说/故事文本转换为分镜表。
 
-MVP 规则:
-1. 按段落/标点分句
-2. 每句 → 1 个镜头（3-5秒）
-3. 提取角色名 → 匹配角色卡
-4. 台词截断到 15 字
-5. 最后一镜加钩子标记
+支持两种模式:
+- ai: 调用 LLM 语义理解生成分镜（推荐，需 AI API）
+- rules: 规则版（按标点分句，关键词匹配景别）
 """
 
 import re
@@ -54,6 +51,7 @@ class StoryboardGenerator:
         user_id: str,
         episode_id: str | None = None,
         character_names: list[str] | None = None,
+        mode: str = 'ai',
     ) -> dict[str, Any]:
         """从文本生成分镜表。
 
@@ -63,6 +61,7 @@ class StoryboardGenerator:
             user_id: 用户 ID
             episode_id: 集数 ID（可选）
             character_names: 已知角色名列表（用于匹配）
+            mode: 'ai'（LLM 语义生成）或 'rules'（规则版）
 
         Returns:
             {'storyboard': dict, 'shots': list[dict]}
@@ -70,6 +69,109 @@ class StoryboardGenerator:
         if not text or not text.strip():
             return {'storyboard': {}, 'shots': []}
 
+        if mode == 'ai':
+            try:
+                return await self._generate_with_ai(
+                    text, project_id, user_id, episode_id, character_names or []
+                )
+            except Exception as e:
+                logger.warning('[StoryboardGen] AI 模式失败，回退规则模式: %s', e)
+
+        return await self._generate_with_rules(
+            text, project_id, user_id, episode_id, character_names or []
+        )
+
+    async def _generate_with_ai(
+        self,
+        text: str,
+        project_id: str,
+        user_id: str,
+        episode_id: str | None = None,
+        character_names: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """AI 模式：调用 LLM 语义理解生成分镜表。"""
+        import json as _json
+        from app.core.json_utils import safe_json_loads
+
+        char_names = character_names or []
+        char_hint = f'角色列表: {", ".join(char_names)}' if char_names else ''
+
+        prompt = f"""你是一个专业的漫剧分镜师。将以下文本转换为分镜表。
+
+要求:
+- 每镜 3-5 秒
+- 台词不超过 15 字
+- 景别: 特写/近景/中景/全景/远景
+- 镜头运动: 推/拉/摇/跟/固定
+- 最后一镜留钩子
+{char_hint}
+
+输出 JSON 数组格式:
+[{{"shot_number": 1, "duration": 4.0, "scene_type": "中景", "visual_description": "画面描述", "character_action": "角色动作", "dialogue": "台词", "sound_effect": "音效", "camera_movement": "固定"}}]
+
+文本:
+{text[:2000]}
+
+只输出 JSON 数组，不要其他内容。"""
+
+        # 调用 AI 服务
+        from app.services.ai.ai_service import AIService
+        ai_service = AIService()
+        response = await ai_service.generate_text(prompt, temperature=0.3)
+
+        # 解析 JSON
+        shots_data = safe_json_loads(response, default=[])
+        if not isinstance(shots_data, list) or not shots_data:
+            raise ValueError('AI 返回格式无效，回退规则模式')
+
+        # 标准化镜头数据
+        shots: list[dict[str, Any]] = []
+        for idx, s in enumerate(shots_data, start=1):
+            if not isinstance(s, dict):
+                continue
+            shot = {
+                'shot_number': s.get('shot_number', idx),
+                'duration': float(s.get('duration', DEFAULT_SHOT_DURATION)),
+                'scene_type': s.get('scene_type', '中景'),
+                'visual_description': s.get('visual_description', ''),
+                'character_action': s.get('character_action', ''),
+                'dialogue': str(s.get('dialogue', ''))[:MAX_DIALOGUE_CHARS],
+                'sound_effect': s.get('sound_effect', ''),
+                'camera_movement': s.get('camera_movement', '固定'),
+                'status': 'pending_script',
+                'matched_characters': [],
+                'metadata': {'ai_generated': True},
+            }
+            shots.append(shot)
+
+        if shots:
+            shots[-1]['metadata']['is_hook'] = True
+
+        storyboard = {
+            'id': str(uuid.uuid4()),
+            'project_id': project_id,
+            'episode_id': episode_id,
+            'title': f'分镜表(AI) - {len(shots)} 个镜头',
+            'source_text': text[:500],
+            'shot_count': len(shots),
+            'status': 'draft',
+        }
+
+        logger.info(
+            '[StoryboardGen] AI 生成 %d 个镜头 (project=%s)',
+            len(shots), project_id,
+        )
+        return {'storyboard': storyboard, 'shots': shots}
+
+    async def _generate_with_rules(
+        self,
+        text: str,
+        project_id: str,
+        user_id: str,
+        episode_id: str | None = None,
+        character_names: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """规则版分镜生成（fallback）。"""
         char_names = character_names or []
 
         # 1. 分句

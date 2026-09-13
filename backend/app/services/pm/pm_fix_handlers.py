@@ -704,6 +704,35 @@ async def _verify_quality_fix(issue: dict[str, Any], project_id: str, user_id: s
 
 
 # =============================================================================
+# 视觉一致性自动重试（漫剧角色变脸/画风割裂）
+# =============================================================================
+
+
+async def _fix_visual_inconsistency(db, issue, project_id, user_id, scan_round, decision_log=None):
+    """视觉一致性问题自动重试 — 回退镜头状态 + 注入修正提示词。
+
+    委托给 VisualRetryService 处理，本函数仅做桥接。
+    """
+    try:
+        from app.services.comic.visual_retry import VisualRetryService
+
+        service = VisualRetryService()
+        result = await service.handle_visual_issue(db, issue, project_id, user_id)
+
+        action = result.get('action', 'skip')
+        if action == 'retry':
+            return True, f"视觉重试第{result.get('attempt', 0)}次 (shot={result.get('shot_id', '?')[:8]})"
+        elif action == 'escalate':
+            return False, f"超过重试上限，转人工审核 (shot={result.get('shot_id', '?')[:8]})"
+        else:
+            return False, f"跳过: {result.get('reason', '未知原因')}"
+
+    except Exception as e:
+        logger.warning('[VisualFix] 处理异常: %s', e)
+        return False, f'视觉重试异常: {e}'
+
+
+# =============================================================================
 # 初始化：注册所有修复 handler
 # =============================================================================
 
@@ -727,6 +756,8 @@ def _register_all_handlers():
         ('conflict_weak', None, _fix_conflict_weak, '冲突薄弱改进建议'),
         # P2: 大纲漂移修复 — LLM 生成大纲修正建议
         ('outline_drift', 'pm_agent_outline_drift', _fix_outline_drift, '大纲漂移修正建议'),
+        # 视觉一致性自动重试（漫剧角色变脸/画风割裂）
+        ('ca_visual_inconsistency', None, _fix_visual_inconsistency, '视觉一致性自动重试'),
     )
     for bare, prefixed, handler, desc in specs:
         _register_fix_handler(bare, handler, desc)
