@@ -37,6 +37,15 @@ from app.models.relationship import CharacterRelationship
 from app.models.settings import Settings
 from app.models.skill import Skill
 from app.models.story_line import StoryLine
+from app.models.content_segment import ContentSegment
+from app.models.comic import ComicPanel, VisualReference
+from app.models.webhook import WebhookConfig
+from app.models.comic_bible import (
+    SettingBible, CharacterCard, ArtStyleCard,
+    NegativePromptLibrary, ComicEpisode,
+)
+from app.models.comic_shot import Storyboard, Shot, ShotAsset
+from app.models.comic_review import ReviewCheckpoint
 
 __all__ = [
     'Base',
@@ -74,4 +83,17 @@ __all__ = [
     'Settings',
     'Skill',
     'StoryLine',
+    'ContentSegment',
+    'ComicPanel',
+    'VisualReference',
+    'WebhookConfig',
+    'SettingBible',
+    'CharacterCard',
+    'ArtStyleCard',
+    'NegativePromptLibrary',
+    'ComicEpisode',
+    'Storyboard',
+    'Shot',
+    'ShotAsset',
+    'ReviewCheckpoint',
 ]

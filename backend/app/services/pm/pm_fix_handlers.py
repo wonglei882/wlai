@@ -271,23 +271,52 @@ async def _execute_fix(
     user_id: str,
     db,
 ) -> str:
-    """执行对应问题的自动修复，返回动作描述。"""
+    """执行对应问题的自动修复，返回动作描述。
+
+    P2-2 增强：执行前查询 Beta 分布后验成功率，选择修复策略。
+    - aggressive: 正常执行修复
+    - conservative: 执行修复但附加「建议型」标记
+    - skip: 跳过修复，返回转人工提示
+    """
     diag_type = issue.get('type', '')
+
+    # P2-2: 反馈回路 — 用 Beta 分布选择修复策略
+    try:
+        from app.services.pm.self_tuning import choose_fix_strategy
+
+        strategy, expected_rate, strategy_reason = await choose_fix_strategy(db, project_id, diag_type)
+        issue['_fix_strategy'] = strategy
+        issue['_fix_expected_rate'] = expected_rate
+        logger.info(
+            '[PM-Agent 决策] 修复策略: %s (rate=%.2f) - %s',
+            strategy,
+            expected_rate,
+            strategy_reason,
+        )
+        if strategy == 'skip':
+            return f'跳过修复（{strategy_reason}），转人工处理'
+    except Exception as e:
+        logger.debug('[PM-Agent 决策] 策略选择异常（回退默认）: %s', e)
+        strategy = 'aggressive'
 
     for prefix, (handler, desc) in _FIX_HANDLERS.items():
         if diag_type.startswith(prefix):
             try:
-                logger.info(f'[PM-Agent 决策] 执行修复: {prefix} -> {desc}')
+                logger.info('[PM-Agent 决策] 执行修复: %s -> %s (strategy=%s)', prefix, desc, strategy)
                 result = await handler(issue, project_id, user_id, db)
-                return f'{desc}: {result}' if result else desc
+                # conservative 策略附加建议型标记
+                suffix = '（保守模式：建议人工复核）' if strategy == 'conservative' else ''
+                return f'{desc}: {result}{suffix}' if result else f'{desc}{suffix}'
             except Exception as e:
                 # 按异常类型显式分类并暂存到 issue，供 _finalize_decision 写入 fix_details.failure_kind
                 try:
                     issue['_failure_kind'] = classify_failure_from_exception(e)
                 except Exception as cls_e:  # 分类失败不得掩盖原始异常
-                    logger.debug(f'[PM-Agent 决策] 失败分类异常（忽略）: {cls_e}')
+                    logger.debug('[PM-Agent 决策] 失败分类异常（忽略）: %s', cls_e)
                 logger.error(
-                    f'[PM-Agent 决策] 修复执行异常 prefix={prefix}: {e}',
+                    '[PM-Agent 决策] 修复执行异常 prefix=%s: %s',
+                    prefix,
+                    e,
                     extra={'project_id': project_id, 'handler': handler.__name__, 'diag_type': diag_type},
                 )
                 await db.rollback()

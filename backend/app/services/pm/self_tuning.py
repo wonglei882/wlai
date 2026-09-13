@@ -404,6 +404,46 @@ async def _get_beta_intervention(
     return False, f'贝叶斯P(成功率<50%)=[{prob:.0%}]<=50%'
 
 
+# =============================================================================
+# P2-2: 反馈回路增强 — 用 Beta 分布驱动修复策略选择（VQE 式闭环）
+# =============================================================================
+
+# 策略阈值
+STRATEGY_AGGRESSIVE_THRESHOLD = 0.85  # 成功率 > 0.85 → 激进修复
+STRATEGY_CONSERVATIVE_THRESHOLD = 0.4  # 成功率 0.4~0.85 → 保守修复
+# 成功率 < 0.4 → 跳过修复，转人工
+
+
+async def choose_fix_strategy(
+    db,
+    project_id: str,
+    diag_type: str,
+) -> tuple[str, float, str]:
+    """根据 Beta 分布后验成功率选择修复策略。
+
+    策略分级:
+        'aggressive' — 激进修复（直接改正文/状态）
+        'conservative' — 保守修复（建伏笔+建议，不直接改正文）
+        'skip' — 跳过修复，转人工
+
+    Returns:
+        (strategy, expected_rate, reason)
+    """
+    beta = await _build_beta_from_history(db, project_id, diag_type)
+    expected = beta.expected_rate()
+    n = beta.total_samples()
+
+    # 样本不足时默认保守（不激进也不跳过）
+    if n < 3:
+        return 'conservative', expected, f'样本不足(n={n})，默认保守策略'
+
+    if expected >= STRATEGY_AGGRESSIVE_THRESHOLD:
+        return 'aggressive', expected, f'成功率[{expected:.0%}]≥85%，激进修复'
+    if expected >= STRATEGY_CONSERVATIVE_THRESHOLD:
+        return 'conservative', expected, f'成功率[{expected:.0%}]∈[40%,85%)，保守修复'
+    return 'skip', expected, f'成功率[{expected:.0%}]<40%，转人工'
+
+
 # ============================================================================
 # 调参逻辑
 # ============================================================================

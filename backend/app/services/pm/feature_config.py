@@ -145,6 +145,24 @@ class PMFeatureConfig:
             '现代都市': ['轻功', '内力', '真气', '丹田'],
         }
 
+    def get_scanner_params(self, dimension: str) -> dict[str, Any]:
+        """获取扫描维度参数（声明式配置，支持运行时覆盖）。
+
+        Args:
+            dimension: 维度标识（如 'character_consistency'）
+
+        Returns:
+            参数值字典（仅包含 default 值，未配置的维度返回空 dict）
+        """
+        params_config = self._config.get('scanner_params', {}).get(dimension, {})
+        if not isinstance(params_config, dict):
+            return {}
+        return {
+            key: spec.get('default')
+            for key, spec in params_config.items()
+            if isinstance(spec, dict)
+        }
+
     def reload(self):
         """重新加载配置"""
         self._load_config()
@@ -168,3 +186,8 @@ def get_pm_feature_trigger(feature_path: str) -> str | None:
 def get_pm_feature_config(feature_path: str) -> dict[str, Any]:
     """获取 PM 功能完整配置"""
     return pm_feature_config.get_feature_config(feature_path)
+
+
+def get_scanner_params(dimension: str) -> dict[str, Any]:
+    """获取扫描维度参数"""
+    return pm_feature_config.get_scanner_params(dimension)

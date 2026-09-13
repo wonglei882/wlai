@@ -48,9 +48,9 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title='WLai PM - AI 项目经理后端服务',
-        description='长篇网文创作的 PM 子系统：主动巡检、章节质量诊断、灵感与守护。',
-        version='1.0.0',
+        title='ConsistencyAgent - AI 内容一致性 Agent',
+        description='通用 AI 内容一致性 Agent：支持长篇小说、漫剧等多模态内容的一致性巡检、诊断与修复。',
+        version='2.0.0',
         lifespan=lifespan,
     )
 
@@ -68,16 +68,35 @@ def create_app() -> FastAPI:
     from app.api.pm_diagnostic_logs import router as pm_diagnostic_logs_router
     from app.api.pm_token_usage import router as pm_token_usage_router
 
+    # API v1 — 通用一致性 Agent 接口
+    from app.api.v1.content import router as v1_content_router
+    from app.api.v1.reports import router as v1_reports_router
+    from app.api.v1.webhooks import router as v1_webhooks_router
+
+    # API v1 — 漫剧制片 Agent 接口
+    from app.api.v1.comic_bible import router as v1_comic_bible_router
+    from app.api.v1.comic_storyboard import router as v1_comic_storyboard_router
+
+    # 现有 PM 路由（向后兼容）
     app.include_router(pm_router)
     app.include_router(pm_control_router)
     app.include_router(pm_diagnostic_logs_router)
     app.include_router(pm_token_usage_router)
     app.include_router(companion_router)
 
+    # API v1 — 通用 Agent 路由
+    app.include_router(v1_content_router)
+    app.include_router(v1_reports_router)
+    app.include_router(v1_webhooks_router)
+
+    # API v1 — 漫剧制片 Agent 路由
+    app.include_router(v1_comic_bible_router)
+    app.include_router(v1_comic_storyboard_router)
+
     @app.get('/health', tags=['system'])
     async def health():
         """健康检查。"""
-        return {'status': 'ok', 'service': 'wlai-pm'}
+        return {'status': 'ok', 'service': 'consistency-agent', 'version': '2.0.0'}
 
     return app
 

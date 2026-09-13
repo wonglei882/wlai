@@ -1,8 +1,39 @@
 # PM 功能分级启用配置
-# Version: 1.0.0
+# Version: 1.1.0
 # Created: 2026-08-17
+# Updated: 2026-09-13 (新增 comic_production 漫剧制片流水线)
 
 features:
+  # ============================================================================
+  # 内容类型配置（多模态领域引擎启停）
+  # ============================================================================
+  content_types:
+    novel:
+      enabled: true
+      description: "长篇小说引擎（角色/伏笔/世界观/大纲/质量/段落）"
+      adapter: 'novel_chapter'
+      dimensions:
+        - character_consistency
+        - foreshadow_age
+        - world_rule_drift
+        - outline_drift
+        - quality_score
+        - paragraph_format
+    comic:
+      enabled: true
+      description: "漫剧引擎（视觉一致性/场景连续性/分镜衔接/对话气泡）"
+      adapter: 'comic_panel'
+      dimensions:
+        - visual_consistency
+        - scene_continuity
+        - panel_transition
+        - dialogue_bubble
+    audio:
+      enabled: false
+      description: "有声书引擎（桩实现，待扩展）"
+      adapter: 'audio_segment'
+      dimensions: []
+
   # ============================================================================
   # 核心功能（默认启用，不可关闭）
   # ============================================================================
@@ -147,6 +178,24 @@ performance:
   max_crash_restart: 3        # 巡检循环异常最大自动重启次数（崩溃保护上限）
 
 # ============================================================================
+# 扫描维度参数声明
+# 将硬编码阈值集中管理，支持运行时调参（self_tuning 可动态覆盖）
+# ============================================================================
+scanner_params:
+  character_consistency:
+    z_score_threshold: { default: 2.0, min: 1.0, max: 5.0, description: "Z-score 异常检测阈值" }
+    min_samples: { default: 5, min: 3, max: 20, description: "最小样本量（低于此值退回硬阈值）" }
+  foreshadow_age:
+    low_age_threshold: { default: 10, min: 5, max: 50, description: "伏笔老化章节阈值" }
+    decay_lambda_default: { default: 0.10, min: 0.01, max: 0.5, description: "默认衰减速率" }
+    urgency_threshold: { default: 0.3, min: 0.1, max: 0.9, description: "紧急度预警阈值" }
+  quality_score:
+    score_threshold: { default: 70, min: 50, max: 90, description: "质量评分低于此值生成 issue" }
+  paragraph_format:
+    max_chars: { default: 110, min: 50, max: 300, description: "段落最大字数" }
+    long_para_threshold: { default: 3, min: 1, max: 10, description: "超长段落数超过此值报 issue" }
+
+# ============================================================================
 # 世界观冲突检测配置
 # 用于 _verify_world_keywords：检测章节正文是否引入与世界观规则冲突的设定
 # key 为规则关键词（出现在 world_rules 中），value 为冲突标记词列表
@@ -175,3 +224,37 @@ worldview_conflict_markers:
     - 内力
     - 真气
     - 丹田
+
+# ============================================================================
+# 漫剧制片流水线配置（AI 漫剧制片 Agent）
+# ============================================================================
+comic_production:
+  enabled: true
+  description: "漫剧制片流水线（设定圣经/分镜/提示词编译/素材管理/审核）"
+  shot_state_machine:
+    states:
+      - pending_script
+      - pending_image
+      - pending_review_image
+      - pending_video
+      - pending_voice
+      - pending_composite
+      - completed
+    auto_advance: false  # 是否自动推进状态（MVP 默认手动）
+  prompt_compiler:
+    default_platform: 'midjourney'  # 默认出图平台
+    supported_platforms:
+      - midjourney
+      - stable_diffusion
+      - jimeng
+      - kling
+  storyboard_generator:
+    default_shot_duration: 4.0  # 默认镜头时长（秒）
+    max_dialogue_chars: 15      # 台词最大字数
+  review_checkpoints:
+    required_types:
+      - character_design     # 角色定稿
+      - storyboard_confirm   # 分镜确认
+      - first_frame          # 首帧确认
+      - video_confirm        # 视频确认
+      - final_cut            # 成片确认

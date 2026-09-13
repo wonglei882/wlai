@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 from app.services.pm.pm_consistency_guardian import PMConsistencyGuardian
 from app.services.pm.scan_support import has_unresolved_diagnostic, load_character_names
+from app.services.pm.feature_config import get_scanner_params
 
 logger = logging.getLogger(__name__)
 
@@ -46,16 +47,21 @@ _FORESHADOW_LAMBDA_BY_CATEGORY = {
     'relationship': 0.06,
     'item': 0.06,
 }
-_FORESHADOW_LAMBDA_DEFAULT = 0.10
 
 # 巡检只扫最近 N 个章节（避免全量扫描耗时过长）
 RECENT_CHAPTER_LIMIT = 20
 
-# 伏笔老化阈值（planted 后超过此章节数仍未 resolved → 预警）
+
+def _get_param(dimension: str, key: str, fallback):
+    """从声明式配置读取扫描参数，缺失时回退硬编码默认值。"""
+    params = get_scanner_params(dimension)
+    return params.get(key, fallback)
+
+
+# 向后兼容：模块级常量保留（实际值从配置读取）
 FORESHADOW_LOW_AGE_THRESHOLD = 10
-# P1-1 Z-score 扫描参数
-Z_SCORE_THRESHOLD = 2.0  # Z > 2.0 视为异常（约 95% 置信）
-MIN_SAMPLES_FOR_ZSCORE = 5  # 样本量 < 5 退回硬阈值
+Z_SCORE_THRESHOLD = 2.0
+MIN_SAMPLES_FOR_ZSCORE = 5
 
 
 # =============================================================================
@@ -114,6 +120,9 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
     - 样本量 < 5：退回硬阈值（相邻章 location 不同即报）
     - Z > Z_SCORE_THRESHOLD 视为异常跳变（约 95% 置信）
     """
+    # 从声明式配置读取参数（回退硬编码默认值）
+    z_threshold = _get_param('character_consistency', 'z_score_threshold', Z_SCORE_THRESHOLD)
+    min_samples = _get_param('character_consistency', 'min_samples', MIN_SAMPLES_FOR_ZSCORE)
     issues = []
     try:
         result = await db.execute(
@@ -154,8 +163,8 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
                 if not (loc1 and loc2 and loc1 != loc2):
                     continue
 
-                # 样本量 < 5：硬阈值
-                if n_samples < MIN_SAMPLES_FOR_ZSCORE:
+                # 样本量 < min_samples：硬阈值
+                if n_samples < min_samples:
                     issues.append(
                         {
                             'type': 'character_location_jump',
@@ -186,7 +195,7 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
                 observed_diff = abs(p1 - p2)
                 z_score = observed_diff / std_p if std_p > 0 else 0.0
 
-                if z_score > Z_SCORE_THRESHOLD:
+                if z_score > z_threshold:
                     issues.append(
                         {
                             'type': 'character_location_jump',
@@ -211,6 +220,10 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
 )
 async def _scan_foreshadow_age(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
     """检测 planted 超过阈值的伏笔（可能已失效）。"""
+    # 从声明式配置读取参数
+    age_threshold = _get_param('foreshadow_age', 'low_age_threshold', FORESHADOW_LOW_AGE_THRESHOLD)
+    urgency_min = _get_param('foreshadow_age', 'urgency_threshold', 0.3)
+    decay_lambda_default = _get_param('foreshadow_age', 'decay_lambda_default', 0.10)
     issues = []
     try:
         from app.models.chapter import Chapter
@@ -228,7 +241,7 @@ async def _scan_foreshadow_age(db: AsyncSession, project_id: str, user_id: str) 
             return issues
 
         # 找 planted 但超过阈值仍未 resolved 的伏笔
-        threshold = latest_ch - FORESHADOW_LOW_AGE_THRESHOLD
+        threshold = latest_ch - age_threshold
         if threshold <= 0:
             return issues
 
@@ -247,10 +260,10 @@ async def _scan_foreshadow_age(db: AsyncSession, project_id: str, user_id: str) 
         for fs in result.scalars().all():
             age = latest_ch - (fs.plant_chapter_number or 0)
             # P0: 指数衰减紧急度 urgency = 1 - e^(-lambda * age)，lambda 按伏笔类型拟合
-            _lambda = _FORESHADOW_LAMBDA_BY_CATEGORY.get(fs.category or '', _FORESHADOW_LAMBDA_DEFAULT)
+            _lambda = _FORESHADOW_LAMBDA_BY_CATEGORY.get(fs.category or '', decay_lambda_default)
             urgency_score = 1.0 - math.exp(-_lambda * age)
             # 紧急度分级：0.5 以上中度关注，0.8 以上高优先级
-            if urgency_score < 0.3:
+            if urgency_score < urgency_min:
                 continue  # 未达到预警阈值，跳过
             issues.append(
                 {
@@ -447,8 +460,8 @@ QUALITY_SCORE_THRESHOLD = 70
     'quality_score',
     'pm_agent_quality_score_low',
     lambda i: (
-        f'[PM-Agent] 第{i.get("chapter_number", "?")}章质量评分 {i.get("total_score", 0):.1f} < {QUALITY_SCORE_THRESHOLD}'
-        f'，低分维度: {"; ".join(i.get("low_dims", []))}'
+        f'[PM-Agent] 第{i.get("chapter_number", "?")}章质量评分 {i.get("total_score", 0):.1f} < {_get_param("quality_score", "score_threshold", QUALITY_SCORE_THRESHOLD)}'
+        f'，低分维度: {";".join(i.get("low_dims", []))}'
     ),
 )
 async def _scan_quality_score(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
@@ -457,6 +470,7 @@ async def _scan_quality_score(db: AsyncSession, project_id: str, user_id: str) -
     使用 PMQualityScorerV2.score()，支持 AI 评分 + fallback 规则评分。
     AIService 通过 pm_ai_client 获取（用户级缓存），获取失败时自动降级为规则评分。
     """
+    score_threshold = _get_param('quality_score', 'score_threshold', QUALITY_SCORE_THRESHOLD)
     issues: list[dict[str, Any]] = []
     try:
         result = await db.execute(
@@ -501,6 +515,7 @@ async def _scan_quality_score(db: AsyncSession, project_id: str, user_id: str) -
                     'total_score': score_result.total_score,
                     'low_dims': low_dims,
                     'suggestions': score_result.suggestions,
+                    'score_threshold': score_threshold,
                 }
             )
 
@@ -523,7 +538,7 @@ PARAGRAPH_LONG_THRESHOLD = 3
     'paragraph_format',
     'pm_agent_paragraph_too_long',
     lambda i: (
-        f'[PM-Agent] 第{i.get("chapter_number", "?")}章有 {i.get("long_para_count", 0)} 个超长段落（>{PARAGRAPH_MAX_CHARS}字）'
+        f'[PM-Agent] 第{i.get("chapter_number", "?")}章有 {i.get("long_para_count", 0)} 个超长段落（>{_get_param("paragraph_format", "max_chars", PARAGRAPH_MAX_CHARS)}字）'
         f'，总计 {i.get("total_paras", 0)} 段'
     ),
 )
@@ -534,6 +549,8 @@ async def _scan_paragraph_format(db: AsyncSession, project_id: str, user_id: str
     format_webnovel_paragraphs() 拆分。如果生成时格式化失败或跳过，
     巡检时应该能发现这些遗留的超长段落。
     """
+    max_chars = _get_param('paragraph_format', 'max_chars', PARAGRAPH_MAX_CHARS)
+    long_threshold = _get_param('paragraph_format', 'long_para_threshold', PARAGRAPH_LONG_THRESHOLD)
     issues: list[dict[str, Any]] = []
     try:
         result = await db.execute(
@@ -556,9 +573,9 @@ async def _scan_paragraph_format(db: AsyncSession, project_id: str, user_id: str
 
         # 按 \n\n 分段（与 format_webnovel_paragraphs 的拆分逻辑一致）
         paragraphs = [p.strip() for p in content.split('\n\n') if p.strip()]
-        long_paras = [p for p in paragraphs if len(p) > PARAGRAPH_MAX_CHARS]
+        long_paras = [p for p in paragraphs if len(p) > max_chars]
 
-        if len(long_paras) > PARAGRAPH_LONG_THRESHOLD:
+        if len(long_paras) > long_threshold:
             issues.append(
                 {
                     'type': 'paragraph_too_long',
