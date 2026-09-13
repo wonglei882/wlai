@@ -623,3 +623,87 @@ def _extract_chapter_from_range(chapter_range: str):
     except ValueError:
         pass
     return 0
+
+
+# =============================================================================
+# 漫剧扫描维度适配注册（事后巡检：面向 comic_panels 表，事后复核）
+# =============================================================================
+# 4 个漫剧扫描器原本定义在 domain_engines/comic/，继承 BaseScanner 返回 list[ScanIssue]。
+# 这里通过适配函数将它们接入 SCAN_REGISTRY，让 PM Agent 后台巡检对漫剧项目也能事后复核。
+# 非漫剧项目查 comic_panels 表时，扫描器内部 try/except 会返回空列表（不阻断巡检）。
+
+async def _adapt_visual_consistency(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
+    """漫剧视觉一致性扫描适配器。"""
+    try:
+        from app.domain_engines.comic.visual_scanner import VisualConsistencyScanner
+        issues = await VisualConsistencyScanner().scan(db, project_id, user_id)
+        return [i.to_dict() for i in issues]
+    except Exception as e:
+        logger.debug(f'[PM-Agent] visual_consistency 跳过（可能非漫剧项目）: {e}')
+        return []
+
+
+async def _adapt_scene_continuity(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
+    """漫剧场景连续性扫描适配器。"""
+    try:
+        from app.domain_engines.comic.scene_scanner import SceneContinuityScanner
+        issues = await SceneContinuityScanner().scan(db, project_id, user_id)
+        return [i.to_dict() for i in issues]
+    except Exception as e:
+        logger.debug(f'[PM-Agent] scene_continuity 跳过（可能非漫剧项目）: {e}')
+        return []
+
+
+async def _adapt_panel_transition(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
+    """漫剧分镜衔接扫描适配器。"""
+    try:
+        from app.domain_engines.comic.panel_scanner import PanelTransitionScanner
+        issues = await PanelTransitionScanner().scan(db, project_id, user_id)
+        return [i.to_dict() for i in issues]
+    except Exception as e:
+        logger.debug(f'[PM-Agent] panel_transition 跳过（可能非漫剧项目）: {e}')
+        return []
+
+
+async def _adapt_dialogue_bubble(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
+    """漫剧对话气泡一致性扫描适配器。"""
+    try:
+        from app.domain_engines.comic.dialogue_scanner import DialogueBubbleScanner
+        issues = await DialogueBubbleScanner().scan(db, project_id, user_id)
+        return [i.to_dict() for i in issues]
+    except Exception as e:
+        logger.debug(f'[PM-Agent] dialogue_bubble 跳过（可能非漫剧项目）: {e}')
+        return []
+
+
+# 注册漫剧事后巡检维度（SCAN_REGISTRY 数据驱动注册）
+@scan_dimension(
+    'visual_consistency', 'ca_visual_inconsistency',
+    lambda i: f'[CA] 视觉不一致: {i.get("message", "")}',
+)
+async def _scan_visual_consistency(db, project_id, user_id):
+    return await _adapt_visual_consistency(db, project_id, user_id)
+
+
+@scan_dimension(
+    'scene_continuity', 'ca_scene_discontinuity',
+    lambda i: f'[CA] 场景跳变: {i.get("message", "")}',
+)
+async def _scan_scene_continuity(db, project_id, user_id):
+    return await _adapt_scene_continuity(db, project_id, user_id)
+
+
+@scan_dimension(
+    'panel_transition', 'ca_panel_transition',
+    lambda i: f'[CA] 分镜衔接: {i.get("message", "")}',
+)
+async def _scan_panel_transition(db, project_id, user_id):
+    return await _adapt_panel_transition(db, project_id, user_id)
+
+
+@scan_dimension(
+    'dialogue_bubble', 'ca_dialogue_inconsistency',
+    lambda i: f'[CA] 对话跳变: {i.get("message", "")}',
+)
+async def _scan_dialogue_bubble(db, project_id, user_id):
+    return await _adapt_dialogue_bubble(db, project_id, user_id)

@@ -60,6 +60,11 @@ class TestScanRegistry:
         'outline_drift',
         'quality_score',
         'paragraph_format',
+        # 漫剧维度（事后巡检适配）
+        'visual_consistency',
+        'scene_continuity',
+        'panel_transition',
+        'dialogue_bubble',
     }
 
     def test_registry_contains_expected_dimensions(self):

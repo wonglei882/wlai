@@ -225,6 +225,6 @@ python -m pytest tests               # 全量测试（136 个）
 - **数据库**：PostgreSQL（必须），Redis（可选，未配置时自动降级）
 - **AI 模型**：支持 OpenAI / Anthropic / Gemini，通过环境变量切换
 - **多模态**：支持 none / cloud / local 三后端可插拔配置
-- **前端**：Next.js 14 + React 19 + Tailwind CSS + shadcn/ui
+- **前端**：Next.js 16 + React 19 + Tailwind CSS + shadcn/ui
 - **部署**：Docker Compose 一键启动（前端 + 后端 + PostgreSQL + Redis）
 - **向后兼容**：现有 PM Agent API（`/api/pm/*`）完全保留，新增 `/api/v1/*` 并行

@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useState, useCallback } from "react"
+import { use, useState, useCallback, useEffect } from "react"
 import { Group, Panel, Separator } from "react-resizable-panels"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api-client"
@@ -24,6 +24,25 @@ export default function NovelWorkspacePage({ params }: { params: Promise<{ id: s
   const [centerView, setCenterView] = useState<CenterView>("editor")
   const [storyboardId, setStoryboardId] = useState<string | null>(null)
   const [leftTab, setLeftTab] = useState<"chapters" | "characters">("chapters")
+
+  // 布局持久化：恢复
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(`wlai_novel_ws_${projectId}`)
+      if (raw) {
+        const data = JSON.parse(raw)
+        if (data.centerView) setCenterView(data.centerView)
+        if (data.leftTab) setLeftTab(data.leftTab)
+        if (data.selectedChapterId) setSelectedChapterId(data.selectedChapterId)
+      }
+    } catch { /* ignore */ }
+  }, [projectId])
+
+  // 布局持久化：保存
+  useEffect(() => {
+    const data = { centerView, leftTab, selectedChapterId }
+    localStorage.setItem(`wlai_novel_ws_${projectId}`, JSON.stringify(data))
+  }, [projectId, centerView, leftTab, selectedChapterId])
 
   // 转分镜 mutation
   const convertMutation = useMutation({

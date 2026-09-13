@@ -23,6 +23,14 @@ async function request<T>(
     ...(options.headers as Record<string, string>),
   }
 
+  // 附加 JWT token（认证）
+  if (typeof window !== "undefined") {
+    const token = localStorage.getItem("wlai_token")
+    if (token && !headers["Authorization"]) {
+      headers["Authorization"] = `Bearer ${token}`
+    }
+  }
+
   // 附加 cookie（认证）
   let res: Response
   try {

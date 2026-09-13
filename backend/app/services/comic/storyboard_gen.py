@@ -52,6 +52,7 @@ class StoryboardGenerator:
         episode_id: str | None = None,
         character_names: list[str] | None = None,
         mode: str = 'ai',
+        bible_context: str = '',
     ) -> dict[str, Any]:
         """从文本生成分镜表。
 
@@ -62,6 +63,7 @@ class StoryboardGenerator:
             episode_id: 集数 ID（可选）
             character_names: 已知角色名列表（用于匹配）
             mode: 'ai'（LLM 语义生成）或 'rules'（规则版）
+            bible_context: 事前守护注入的设定圣经上下文块（世界观/角色/前情）
 
         Returns:
             {'storyboard': dict, 'shots': list[dict]}
@@ -72,7 +74,8 @@ class StoryboardGenerator:
         if mode == 'ai':
             try:
                 return await self._generate_with_ai(
-                    text, project_id, user_id, episode_id, character_names or []
+                    text, project_id, user_id, episode_id, character_names or [],
+                    bible_context=bible_context,
                 )
             except Exception as e:
                 logger.warning('[StoryboardGen] AI 模式失败，回退规则模式: %s', e)
@@ -88,6 +91,7 @@ class StoryboardGenerator:
         user_id: str,
         episode_id: str | None = None,
         character_names: list[str] | None = None,
+        bible_context: str = '',
     ) -> dict[str, Any]:
         """AI 模式：调用 LLM 语义理解生成分镜表。"""
         import json as _json
@@ -95,6 +99,8 @@ class StoryboardGenerator:
 
         char_names = character_names or []
         char_hint = f'角色列表: {", ".join(char_names)}' if char_names else ''
+        # 事前守护：注入设定圣经上下文块（世界观/角色外貌/前情），从源头约束一致性
+        bible_block = f'\n\n以下是本项目设定圣经，分镜必须严格遵守，不得违背角色外貌与世界观：\n{bible_context}' if bible_context else ''
 
         prompt = f"""你是一个专业的漫剧分镜师。将以下文本转换为分镜表。
 
@@ -104,7 +110,7 @@ class StoryboardGenerator:
 - 景别: 特写/近景/中景/全景/远景
 - 镜头运动: 推/拉/摇/跟/固定
 - 最后一镜留钩子
-{char_hint}
+{char_hint}{bible_block}
 
 输出 JSON 数组格式:
 [{{"shot_number": 1, "duration": 4.0, "scene_type": "中景", "visual_description": "画面描述", "character_action": "角色动作", "dialogue": "台词", "sound_effect": "音效", "camera_movement": "固定"}}]

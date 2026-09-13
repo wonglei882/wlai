@@ -19,6 +19,20 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 
+def _decode_jwt(token: str) -> str | None:
+    """验证 JWT 并返回 user_id；失败返回 None。"""
+    try:
+        from jose import jwt, JWTError
+    except ImportError:
+        return None
+    secret = settings.SESSION_SECRET_KEY or settings.app_name
+    try:
+        payload = jwt.decode(token, secret, algorithms=['HS256'])
+        return payload.get('sub')
+    except JWTError:
+        return None
+
+
 def _validate_production_settings():
     """生产环境配置校验，启动时执行。"""
     import warnings
@@ -32,11 +46,19 @@ def _validate_production_settings():
             'LOCAL_AUTH_ENABLED=True 但 LOCAL_AUTH_PASSWORD 为空，本地登录无密码保护！',
             RuntimeWarning, stacklevel=2,
         )
+    # 检测默认弱密码
+    _WEAK_PASSWORDS = {'admin123', 'password', '123456', 'admin'}
+    if settings.LOCAL_AUTH_ENABLED and settings.LOCAL_AUTH_PASSWORD in _WEAK_PASSWORDS:
+        logger.error(
+            '⚠️ 安全警告：LOCAL_AUTH_PASSWORD 使用了弱密码 "%s"！'
+            '生产环境请务必更换为强密码。',
+            settings.LOCAL_AUTH_PASSWORD,
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """应用生命周期：启动时注册 PM 事件监听器。"""
+    """应用生命周期：启动时注册 PM 事件监听器 + 自动创建本地管理员。"""
     _validate_production_settings()
     try:
         from app.services.core.event_bus_listeners import init_pm_event_listeners
@@ -44,9 +66,46 @@ async def lifespan(app: FastAPI):
         init_pm_event_listeners()
     except Exception as e:  # noqa: BLE001 - 监听器注册失败不应阻断启动
         logger.warning('PM 事件监听器注册失败: %s', e)
+
+    # 自动创建本地管理员账户
+    await _ensure_local_admin()
+
     logger.info('WLai PM 后端服务已启动')
     yield
     logger.info('WLai PM 后端服务已停止')
+
+
+async def _ensure_local_admin():
+    """启动时检查并创建本地管理员账户（如果不存在）。"""
+    if not settings.LOCAL_AUTH_ENABLED:
+        return
+    username = settings.LOCAL_AUTH_USERNAME
+    password = settings.LOCAL_AUTH_PASSWORD
+    if not username or not password:
+        return
+    try:
+        from app.database import get_engine, _get_or_create_session_maker
+        from app.models.user import User
+        from sqlalchemy import select
+        from passlib.context import CryptContext
+
+        engine = await get_engine()
+        SessionLocal = _get_or_create_session_maker(engine)
+        async with SessionLocal() as session:
+            result = await session.execute(select(User).where(User.username == username))
+            if result.scalar_one_or_none():
+                return  # 已存在，跳过
+            user = User(
+                username=username,
+                password_hash=CryptContext(schemes=['bcrypt'], deprecated='auto').hash(password),
+                display_name=settings.LOCAL_AUTH_DISPLAY_NAME,
+                role='admin',
+            )
+            session.add(user)
+            await session.commit()
+            logger.info('已自动创建本地管理员账户: %s', username)
+    except Exception as e:
+        logger.warning('自动创建本地管理员失败: %s', e)
 
 
 def create_app() -> FastAPI:
@@ -80,6 +139,51 @@ def create_app() -> FastAPI:
             return response
 
     app.add_middleware(ProcessTimeMiddleware)
+
+    # ── JWT 认证中间件 ──────────────────────────────────────────
+    class JWTAuthMiddleware(BaseHTTPMiddleware):
+        """从 Authorization header 解析 JWT，设置 request.state.user_id。"""
+
+        # 不需要认证的路径前缀
+        _PUBLIC_PREFIXES = (
+            '/api/auth/login',
+            '/api/auth/register',
+            '/api/health',
+            '/docs',
+            '/openapi.json',
+            '/redoc',
+        )
+
+        async def dispatch(self, request: Request, call_next):
+            # OPTIONS 预检请求直接放行
+            if request.method == 'OPTIONS':
+                request.state.user_id = None
+                return await call_next(request)
+
+            # 公开路径跳过认证
+            path = request.url.path
+            if any(path.startswith(p) for p in self._PUBLIC_PREFIXES):
+                request.state.user_id = None
+                return await call_next(request)
+
+            # 解析 Authorization: Bearer <token>
+            auth_header = request.headers.get('Authorization', '')
+            user_id = None
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]
+                try:
+                    user_id = _decode_jwt(token)
+                except Exception:
+                    pass  # token 无效时 user_id 保持 None，后续由路由判断
+
+            request.state.user_id = user_id
+            return await call_next(request)
+
+    app.add_middleware(JWTAuthMiddleware)
+
+    # ── 认证路由 ────────────────────────────────────────────────
+    from app.api.auth import router as auth_router
+    app.include_router(auth_router)
 
     from app.api.companion import router as companion_router
     from app.api.pm import router as pm_router

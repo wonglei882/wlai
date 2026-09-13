@@ -34,9 +34,11 @@ from app.models.comic_bible import (
 )
 from app.models.comic_shot import Storyboard, Shot, ShotAsset
 from app.models.comic_review import ReviewCheckpoint
+from app.models.pm_diagnostic_log import PMDiagnosticLog
 from app.services.comic.storyboard_gen import StoryboardGenerator
 from app.services.comic.prompt_compiler import PromptCompiler
 from app.services.comic.shot_state_machine import ShotStateMachine
+from app.services.comic.consistency_guardian import get_comic_guardian, GateResult
 
 import logging
 
@@ -101,6 +103,27 @@ def _model_to_dict(obj) -> dict:
     return {col.name: getattr(obj, col.name, None) for col in obj.__table__.columns}
 
 
+async def _write_gate_diagnostics(
+    db: AsyncSession, project_id: str, user_id: str, gate: GateResult,
+) -> None:
+    """将门控命中的问题写入 PM 诊断日志（供前端诊断面板展示）。
+
+    异常吞掉：诊断写入失败不影响主流程。
+    """
+    for issue in gate.issues:
+        try:
+            db.add(PMDiagnosticLog(
+                project_id=project_id,
+                user_id=user_id,
+                diag_type=issue.issue_type[:50],
+                severity='critical' if issue.severity == 'critical' else 'warning',
+                message=issue.message[:500],
+                suggestion=gate.summary[:500] if gate.summary else None,
+            ))
+        except Exception as e:
+            logger.debug('[ComicGuardian] 写诊断日志跳过: %s', e)
+
+
 # =============================================================================
 # 分镜 API
 # =============================================================================
@@ -112,13 +135,31 @@ async def generate_storyboard(
     user_id: str = Depends(get_current_user_id),
 ):
     """从文本自动生成分镜表。"""
+    guardian = get_comic_guardian()
+
+    # 事前守护：注入设定圣经上下文（世界观/角色外貌/前情），从源头减少漂移
+    bible_context = await guardian.build_script_context(
+        db, req.project_id, req.episode_id,
+    )
+
+    # 未显式传角色名时，从角色卡自动补全（供 AI prompt 与下游门控使用）
+    character_names = req.character_names
+    if not character_names:
+        card_names = (await db.execute(
+            select(CharacterCard.name)
+            .where(CharacterCard.project_id == req.project_id)
+            .limit(30)
+        )).scalars().all()
+        character_names = list(card_names)
+
     gen = StoryboardGenerator()
     result = await gen.generate_from_text(
         text=req.text,
         project_id=req.project_id,
         user_id=user_id,
         episode_id=req.episode_id,
-        character_names=req.character_names,
+        character_names=character_names,
+        bible_context=bible_context,
     )
 
     sb_data = result['storyboard']
@@ -239,13 +280,37 @@ async def confirm_storyboard(
     db: AsyncSession = Depends(get_db_session_depends),
     user_id: str = Depends(get_current_user_id),
 ):
-    """确认分镜表。"""
+    """确认分镜表。
+
+    事中守护：推进前对表内 pending_script 镜头做批量一致性门控（角色卡覆盖 +
+    跨镜对话语气）。命中阻塞性问题时拒绝确认并返回问题清单；软警告则记录后放行。
+    """
     result = await db.execute(
         select(Storyboard).where(Storyboard.id == storyboard_id)
     )
     sb = result.scalar_one_or_none()
     if not sb:
         raise NotFoundError('分镜表', storyboard_id)
+
+    # 事中门控：分镜确认（pending_script → pending_image）前的一致性校验
+    guardian = get_comic_guardian()
+    gate = await guardian.gate_storyboard_confirm(
+        db, storyboard_id, sb.project_id, user_id,
+    )
+    if not gate.passed and gate.blocking:
+        await _write_gate_diagnostics(db, sb.project_id, user_id, gate)
+        await db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                'message': gate.summary or '一致性门控未通过，分镜确认被拦截',
+                'issues': [i.to_dict() for i in gate.issues],
+            },
+        )
+    # 软警告：写入诊断日志供前端面板展示，但不阻断
+    if gate.issues:
+        await _write_gate_diagnostics(db, sb.project_id, user_id, gate)
+
     sb.status = 'confirmed'
     # 将所有镜头状态推进到 pending_image
     shots_result = await db.execute(
@@ -261,7 +326,12 @@ async def confirm_storyboard(
         except ValueError:
             pass  # 已不在 pending_script 的跳过
     await db.commit()
-    return {'id': sb.id, 'status': 'confirmed', 'message': '分镜已确认，镜头进入出图阶段'}
+    return {
+        'id': sb.id,
+        'status': 'confirmed',
+        'message': '分镜已确认，镜头进入出图阶段',
+        'gate': gate.to_dict(),
+    }
 
 
 # =============================================================================
@@ -312,7 +382,24 @@ async def update_shot_status(
     if not shot:
         raise NotFoundError('镜头', shot_id)
 
+    # 事中守护：转换前一致性门控（视觉一致性/首帧审核）
+    guardian = get_comic_guardian()
+    gate = await guardian.gate_transition(db, shot, req.target_status, user_id)
+    if not gate.passed and gate.blocking:
+        await _write_gate_diagnostics(db, shot.project_id, user_id, gate)
+        await db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail={
+                'message': gate.summary or '一致性门控未通过，状态转换被拦截',
+                'issues': [i.to_dict() for i in gate.issues],
+            },
+        )
+    if gate.issues:
+        await _write_gate_diagnostics(db, shot.project_id, user_id, gate)
+
     sm = ShotStateMachine()
+    previous_status = shot.status
     try:
         new_status = sm.transition(shot.status, req.target_status)
     except ValueError as e:
@@ -323,9 +410,10 @@ async def update_shot_status(
     return {
         'id': shot.id,
         'shot_number': shot.shot_number,
-        'previous_status': shot.status,
+        'previous_status': previous_status,
         'current_status': new_status,
         'label': sm.get_label(new_status),
+        'gate': gate.to_dict(),
     }
 
 
@@ -444,7 +532,24 @@ async def create_asset(
     db.add(asset)
     await db.commit()
     await db.refresh(asset)
-    return {'id': asset.id, 'version': version, 'status': 'created'}
+
+    # 事中守护：图片素材注册后自动跑视觉一致性门控，回写评分供前端展示
+    gate_dict = None
+    if req.asset_type == 'image':
+        shot = (await db.execute(
+            select(Shot).where(Shot.id == req.shot_id)
+        )).scalar_one_or_none()
+        if shot:
+            guardian = get_comic_guardian()
+            gate = await guardian.gate_transition(
+                db, shot, 'pending_review_image', user_id,
+            )
+            if gate.issues:
+                await _write_gate_diagnostics(db, shot.project_id, user_id, gate)
+            await db.commit()  # 持久化 last_consistency_score
+            gate_dict = gate.to_dict()
+
+    return {'id': asset.id, 'version': version, 'status': 'created', 'gate': gate_dict}
 
 
 @router.get('/assets')

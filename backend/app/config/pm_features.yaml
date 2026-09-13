@@ -241,6 +241,10 @@ comic_production:
       - pending_composite
       - completed
     auto_advance: false  # 是否自动推进状态（MVP 默认手动）
+  guardian:
+    enabled: true           # 一致性守护总开关（事前+事中）
+    block_on_critical: true # 事中门控是否硬阻塞（critical 问题拒绝状态转换）
+    visual_threshold: 0.7   # 视觉一致性评分阈值（低于此值阻塞出图审核）
   prompt_compiler:
     default_platform: 'midjourney'  # 默认出图平台
     supported_platforms:

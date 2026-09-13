@@ -115,7 +115,7 @@ class VisualConsistencyScanner(BaseScanner):
                     from app.models.comic_shot import Shot
                     shot_result = await db.execute(
                         select(Shot).where(
-                            Shot.project_id == rows[i][0].split(':')[0] if ':' in str(rows[i][0]) else None,
+                            Shot.project_id == (rows[i][0].split(':')[0] if ':' in str(rows[i][0]) else None),
                             Shot.shot_number == seq_a,
                         ).limit(1)
                     )

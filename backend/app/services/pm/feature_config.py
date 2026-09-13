@@ -145,6 +145,24 @@ class PMFeatureConfig:
             '现代都市': ['轻功', '内力', '真气', '丹田'],
         }
 
+    def get_comic_guardian_config(self) -> dict[str, Any]:
+        """获取漫剧一致性守护配置（顶层 comic_production.guardian 段）。
+
+        该配置位于 YAML 顶层 comic_production 下（非 features 子树），
+        因此独立于 get_feature_config。缺失时返回安全默认值（守护启用+硬阻塞）。
+        """
+        comic = self._config.get('comic_production', {})
+        if not isinstance(comic, dict):
+            comic = {}
+        guardian = comic.get('guardian', {})
+        if not isinstance(guardian, dict):
+            guardian = {}
+        return {
+            'enabled': guardian.get('enabled', True),
+            'block_on_critical': guardian.get('block_on_critical', True),
+            'visual_threshold': guardian.get('visual_threshold', 0.7),
+        }
+
     def get_scanner_params(self, dimension: str) -> dict[str, Any]:
         """获取扫描维度参数（声明式配置，支持运行时覆盖）。
 
