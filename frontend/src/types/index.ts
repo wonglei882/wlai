@@ -17,6 +17,7 @@ export interface User {
   username: string
   display_name: string
   role: string
+  must_change_password?: boolean
 }
 
 export interface AuthResponse {

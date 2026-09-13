@@ -34,6 +34,52 @@ class TaskResponse(BaseModel):
     updated_at: str = ''
 
 
+
+class TaskCreateRequest(BaseModel):
+    project_id: str
+    task_type: str  # storyboard_gen / image_gen / video_gen / voice_gen / prompt_compile
+    payload: dict = {}
+
+
+@router.post('')
+async def create_task(
+    req: TaskCreateRequest,
+    db: AsyncSession = Depends(get_db_session_depends),
+    user_id: str = Depends(get_current_user_id),
+):
+    """创建并异步执行任务（当前支持 image_gen，其余类型提示未接入）。"""
+    from app.services.task_runner import submit_task
+
+    task = AsyncTask(
+        project_id=req.project_id,
+        user_id=user_id,
+        task_type=req.task_type,
+        status='pending',
+        progress=0.0,
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+
+    if req.task_type == 'image_gen':
+        shot_id = (req.payload or {}).get('shot_id')
+        if not shot_id:
+            raise HTTPException(status_code=400, detail='image_gen 需要 payload.shot_id')
+        from app.services.comic.generation_tasks import _run_image_generation
+
+        platform = (req.payload or {}).get('platform', 'midjourney')
+        provider = (req.payload or {}).get('provider', 'mock')
+        submit_task(
+            task,
+            lambda: _run_image_generation(shot_id, user_id, platform, provider),
+        )
+        return {'id': task.id, 'status': 'pending', 'message': '出图任务已提交'}
+
+    task.status = 'failed'
+    task.error = f'任务类型 {req.task_type} 暂未接入'
+    await db.commit()
+    raise HTTPException(status_code=400, detail=f'任务类型 {req.task_type} 暂未接入')
+
 @router.get('')
 async def list_tasks(
     db: AsyncSession = Depends(get_db_session_depends),

@@ -31,13 +31,11 @@ async function request<T>(
     }
   }
 
-  // 附加 cookie（认证）
   let res: Response
   try {
     res = await fetch(url, {
       ...options,
       headers,
-      credentials: "include",
     })
   } catch {
     // 网络不可达
@@ -71,13 +69,13 @@ async function request<T>(
 export const api = {
   // ---- 认证 ----
   login: (username: string, password: string) =>
-    request<{ access_token: string }>("api/auth/login", {
+    request<{ access_token: string; must_change_password?: boolean }>("api/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
 
   register: (username: string, password: string, displayName?: string) =>
-    request<{ access_token: string }>("api/auth/register", {
+    request<{ access_token: string; must_change_password?: boolean }>("api/auth/register", {
       method: "POST",
       body: JSON.stringify({
         username,
@@ -86,7 +84,13 @@ export const api = {
       }),
     }),
 
-  me: () => request<{ id: string; username: string; display_name: string }>("api/auth/me"),
+  me: () => request<{ id: string; username: string; display_name: string; role: string; must_change_password?: boolean }>("api/auth/me"),
+
+  changePassword: (oldPassword: string, newPassword: string) =>
+    request<{ access_token: string }>("api/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
+    }),
 
   // ---- 项目 ----
   getProjects: () =>
@@ -202,6 +206,11 @@ export const api = {
   getTokenSummary: (days = 7, projectId?: string) =>
     request<Record<string, unknown>>(
       `api/pm-token-usage/summary?days=${days}${projectId ? `&project_id=${projectId}` : ""}`
+    ),
+
+  getTokenTrend: (days = 7, projectId?: string) =>
+    request<Record<string, unknown>>(
+      `api/pm-token-usage/trend?days=${days}${projectId ? `&project_id=${projectId}` : ""}`
     ),
 
   // ---- 小说：章节 ----

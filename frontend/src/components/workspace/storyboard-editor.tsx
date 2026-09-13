@@ -4,6 +4,7 @@ import { use, useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { api } from "@/lib/api-client"
 import { useWorkspaceStore } from "@/store/workspace-store"
+import { ShotLaneBoard } from "@/components/workspace/shot-lane-board"
 import { cn } from "@/lib/utils"
 import {
   Loader2, RotateCcw, Eye, Zap, Play, CheckCircle2, AlertCircle,
@@ -61,6 +62,7 @@ export function StoryboardEditor({ projectId }: { projectId: string }) {
   const queryClient = useQueryClient()
   const { selectShot, addLog } = useWorkspaceStore()
   const [selectedShots, setSelectedShots] = useState<Set<string>>(new Set())
+  const [view, setView] = useState<"grid" | "board">("grid")
 
   const { data: shotsData, isLoading } = useQuery({
     queryKey: ["project-shots", projectId],
@@ -114,6 +116,29 @@ export function StoryboardEditor({ projectId }: { projectId: string }) {
 
   return (
     <div className="h-full overflow-auto bg-[#2B2B2B]">
+      {/* 视图切换 */}
+      <div className="sticky top-0 z-10 flex items-center gap-1 border-b border-[#515151] bg-[#3C3F41] px-3 py-1">
+        <span className="mr-2 text-xs text-[#A9B7C6]">镜头视图</span>
+        <button
+          onClick={() => setView("grid")}
+          className={cn(
+            "rounded px-2 py-0.5 text-[10px] hover:bg-[#515151]",
+            view === "grid" ? "bg-[#4B6EAF] text-white" : "text-[#A9B7C6]"
+          )}
+        >
+          卡片
+        </button>
+        <button
+          onClick={() => setView("board")}
+          className={cn(
+            "rounded px-2 py-0.5 text-[10px] hover:bg-[#515151]",
+            view === "board" ? "bg-[#4B6EAF] text-white" : "text-[#A9B7C6]"
+          )}
+        >
+          流水线
+        </button>
+      </div>
+
       {/* Batch bar */}
       {selectedShots.size > 0 && (
         <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-[#515151] bg-[#3C3F41] px-3 py-1.5">
@@ -134,7 +159,7 @@ export function StoryboardEditor({ projectId }: { projectId: string }) {
         </div>
       )}
 
-      {/* Shot grid */}
+      {view === "grid" && (
       <div className="grid gap-2 p-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {shots.map((shot) => {
           const shotId = shot.id as string
@@ -243,6 +268,8 @@ export function StoryboardEditor({ projectId }: { projectId: string }) {
           )
         })}
       </div>
+      )}
+      {view === "board" && <ShotLaneBoard projectId={projectId} />}
     </div>
   )
 }

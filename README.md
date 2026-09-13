@@ -22,7 +22,7 @@
 
 ```bash
 # 1. 克隆项目
-git clone <repo-url> && cd MuMuPM-Project
+git clone <repo-url> && cd WLai
 
 # 2. 运行启动脚本（首次会引导配置 .env）
 #    Linux/Mac:

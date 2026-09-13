@@ -117,6 +117,13 @@ async def check_budget(db, ctx: BudgetContext) -> bool:
             limit,
             alert_ratio * 100,
         )
+        # P2-3：成本告警 Webhook（按用户每日去重，尽力而为不阻塞主流程）
+        try:
+            from app.services.webhook_alerts import notify_cost_threshold
+
+            await notify_cost_threshold(ctx.user_id, ctx.project_id, used, limit, alert_ratio)
+        except Exception as e:
+            logger.debug('[PM-Budget] Webhook 成本告警失败（非阻塞）: %s', e)
     return True
 
 

@@ -20,7 +20,15 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option('sqlalchemy.url', settings.database_url)
+def _sync_url(url: str) -> str:
+    # 将 asyncpg 驱动 URL 转换为同步驱动（迁移脚本使用 psycopg2）
+    prefix = 'postgresql+asyncpg://'
+    if url.startswith(prefix):
+        return 'postgresql+psycopg2://' + url[len(prefix):]
+    return url
+
+
+config.set_main_option('sqlalchemy.url', _sync_url(settings.database_url))
 
 target_metadata = Base.metadata
 

@@ -22,5 +22,6 @@ class User(Base):
     display_name = Column(String(128), default='')
     role = Column(String(32), default='user')  # user / admin
     is_active = Column(Boolean, default=True)
+    must_change_password = Column(Boolean, default=False, comment='首登强制改密')
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

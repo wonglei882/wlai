@@ -1,15 +1,16 @@
 "use client"
 
 import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { useAuthStore } from "@/store/auth-store"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { Skeleton } from "@/components/ui/skeleton"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore()
+  const { isAuthenticated, isLoading, mustChangePassword, checkAuth } = useAuthStore()
   const router = useRouter()
+  const pathname = usePathname()
 
   useEffect(() => {
     checkAuth()
@@ -20,6 +21,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       router.push("/login")
     }
   }, [isLoading, isAuthenticated, router])
+
+  useEffect(() => {
+    if (isAuthenticated && mustChangePassword && pathname !== "/change-password") {
+      router.push("/change-password")
+    }
+  }, [isAuthenticated, mustChangePassword, pathname, router])
 
   if (isLoading) {
     return (

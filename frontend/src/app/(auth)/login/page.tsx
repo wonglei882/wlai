@@ -23,8 +23,8 @@ export default function LoginPage() {
     setError("")
     setLoading(true)
     try {
-      await login(username, password)
-      router.push("/projects")
+      const needChange = await login(username, password)
+      router.push(needChange ? "/change-password" : "/projects")
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败")
     } finally {

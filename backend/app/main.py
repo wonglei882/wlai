@@ -12,9 +12,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.config import settings
+from app.config import settings, get_session_secret
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ def _decode_jwt(token: str) -> str | None:
         from jose import jwt, JWTError
     except ImportError:
         return None
-    secret = settings.SESSION_SECRET_KEY or settings.app_name
+    secret = get_session_secret()
     try:
         payload = jwt.decode(token, secret, algorithms=['HS256'])
         return payload.get('sub')
@@ -36,11 +37,10 @@ def _decode_jwt(token: str) -> str | None:
 def _validate_production_settings():
     """生产环境配置校验，启动时执行。"""
     import warnings
-    if not settings.SESSION_SECRET_KEY:
-        warnings.warn(
-            'SESSION_SECRET_KEY 未配置！会话签名将使用随机密钥，重启后所有会话失效。',
-            RuntimeWarning, stacklevel=2,
-        )
+    try:
+        get_session_secret()
+    except RuntimeError as e:
+        raise RuntimeError(f'生产环境配置校验失败: {e}') from e
     if settings.LOCAL_AUTH_ENABLED and not settings.LOCAL_AUTH_PASSWORD:
         warnings.warn(
             'LOCAL_AUTH_ENABLED=True 但 LOCAL_AUTH_PASSWORD 为空，本地登录无密码保护！',
@@ -100,6 +100,7 @@ async def _ensure_local_admin():
                 password_hash=CryptContext(schemes=['bcrypt'], deprecated='auto').hash(password),
                 display_name=settings.LOCAL_AUTH_DISPLAY_NAME,
                 role='admin',
+                must_change_password=password in {'admin123', 'password', '123456', 'admin'},
             )
             session.add(user)
             await session.commit()
@@ -110,7 +111,7 @@ async def _ensure_local_admin():
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title='ConsistencyAgent - AI 内容一致性 Agent',
+        title='WLai - AI 内容一致性 Agent',
         description='通用 AI 内容一致性 Agent：支持长篇小说、漫剧等多模态内容的一致性巡检、诊断与修复。',
         version='2.0.0',
         lifespan=lifespan,
@@ -149,6 +150,7 @@ def create_app() -> FastAPI:
             '/api/auth/login',
             '/api/auth/register',
             '/api/health',
+            '/metrics',
             '/docs',
             '/openapi.json',
             '/redoc',
@@ -180,6 +182,10 @@ def create_app() -> FastAPI:
             return await call_next(request)
 
     app.add_middleware(JWTAuthMiddleware)
+
+    # ── Prometheus 指标埋点中间件（产品化 P2-2） ─────────────────────────
+    from app.api.metrics import MetricsMiddleware
+    app.add_middleware(MetricsMiddleware)
 
     # ── 认证路由 ────────────────────────────────────────────────
     from app.api.auth import router as auth_router
@@ -227,6 +233,16 @@ def create_app() -> FastAPI:
     # 健康检查路由
     from app.api.health import router as health_router
     app.include_router(health_router)
+
+    # Prometheus 指标路由（产品化 P2-2）
+    from app.api.metrics import router as metrics_router
+    app.include_router(metrics_router)
+
+    # 生成素材静态目录（Mock 生成器产物）
+    from app.config import DATA_DIR
+    generated_dir = DATA_DIR / 'generated'
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    app.mount('/generated', StaticFiles(directory=str(generated_dir)), name='generated')
 
     # ── 全局异常处理器 ──────────────────────────────────────────
     from app.core.exceptions import BusinessException

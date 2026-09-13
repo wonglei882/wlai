@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     """应用配置"""
 
     # 应用配置
-    app_name: str = 'WLaiNovel'
+    app_name: str = 'WLai'
     app_version: str = '1.0.0'
     app_host: str = '0.0.0.0'  # noqa: S104  容器化部署默认监听全部网卡，属服务端预期行为
     app_port: int = 8000
@@ -92,22 +92,6 @@ class Settings(BaseSettings):
     # MCP配置
     mcp_max_rounds: int = 3  # MCP工具调用最大轮数（全局统一控制）
 
-    # LinuxDO OAuth2 配置
-    LINUXDO_CLIENT_ID: str | None = None
-    LINUXDO_CLIENT_SECRET: str | None = None
-    # 回调地址：Docker部署时必须使用实际域名或服务器IP，不能使用localhost
-    # 本地开发: http://localhost:8000/api/auth/callback
-    # 生产环境: https://your-domain.com/api/auth/callback 或 http://your-ip:8000/api/auth/callback
-    LINUXDO_REDIRECT_URI: str | None = None
-
-    # 前端URL配置（用于OAuth回调后重定向）
-    # 本地开发: http://localhost:8000
-    # 生产环境: https://your-domain.com 或 http://your-ip:8000
-    FRONTEND_URL: str = 'http://localhost:8000'
-
-    # 初始管理员配置（LinuxDO user_id）
-    INITIAL_ADMIN_LINUXDO_ID: str | None = None
-
     # 本地账户登录配置
     LOCAL_AUTH_ENABLED: bool = True  # 是否启用本地账户登录
     LOCAL_AUTH_USERNAME: str | None = None  # 本地登录用户名
@@ -129,7 +113,7 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = False
     SMTP_USE_SSL: bool = True
     SMTP_FROM_EMAIL: str | None = None
-    SMTP_FROM_NAME: str = 'WLaiNovel'
+    SMTP_FROM_NAME: str = 'WLai'
     EMAIL_AUTH_ENABLED: bool = True
     EMAIL_REGISTER_ENABLED: bool = True
     EMAIL_VERIFICATION_CODE_TTL_MINUTES: int = 10
@@ -170,6 +154,25 @@ settings = Settings()
 config_logger.info('配置加载完成: %s v%s', settings.app_name, settings.app_version)
 config_logger.debug('调试模式: %s', settings.debug)
 config_logger.debug('AI提供商: %s', settings.default_ai_provider)
+
+# 会话签名密钥解析：生产必须显式配置，本地自动生成随机密钥
+_DEV_RANDOM_SECRET: str | None = None
+
+
+def get_session_secret() -> str:
+    """会话签名密钥解析：生产必须显式配置，本地自动生成随机密钥。"""
+    global _DEV_RANDOM_SECRET
+    if settings.SESSION_SECRET_KEY:
+        return settings.SESSION_SECRET_KEY
+    if settings.debug:
+        if _DEV_RANDOM_SECRET is None:
+            import secrets as _secrets
+            _DEV_RANDOM_SECRET = _secrets.token_urlsafe(48)
+        return _DEV_RANDOM_SECRET
+    raise RuntimeError(
+        '生产环境必须配置 SESSION_SECRET_KEY（高强度随机值），拒绝启动。'
+        '可用: python -c "import secrets; print(secrets.token_urlsafe(48))"'
+    )
 
 
 # ==================== 提示词工坊实例标识 ====================

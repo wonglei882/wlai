@@ -348,6 +348,37 @@ async def scan_all_projects() -> dict[str, Any]:
                     # 接线：巡检发现问题后触发主动汇报器，将预警写入前端诊断面板
                     # （之前 ProactiveReporter / generate_proactive_suggestions 从未被调用）
                     await _run_proactive_report(project_id, project_info['user_id'], total)
+
+                    # P2-3：Webhook 告警 — 巡检发现问题 / 巡检完成（尽力而为）
+                    try:
+                        from app.services.webhook_alerts import notify_event
+
+                        await notify_event(
+                            event_type='issue_detected',
+                            project_id=project_id,
+                            user_id=project_info['user_id'],
+                            payload={
+                                'level': 'warning',
+                                'message': f'巡检发现 {total} 个一致性问题',
+                                'issue_count': total,
+                                'scanned_chapters': project_info.get('chapter_count', 0),
+                                'timestamp': datetime.now().isoformat(timespec='seconds'),
+                            },
+                        )
+                        await notify_event(
+                            event_type='scan_finished',
+                            project_id=project_id,
+                            user_id=project_info['user_id'],
+                            payload={
+                                'level': 'info',
+                                'message': '本轮巡检完成',
+                                'issue_count': total,
+                                'scanned_chapters': project_info.get('chapter_count', 0),
+                                'timestamp': datetime.now().isoformat(timespec='seconds'),
+                            },
+                        )
+                    except Exception as we:
+                        logger.debug(f'[PM-Agent] Webhook 告警失败（非阻塞）: {we}')
                     return project_id, scan_result
         except Exception as e:
             logger.error(

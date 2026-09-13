@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
+from app.config import settings, get_session_secret
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ class RegisterRequest(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = 'bearer'
+    must_change_password: bool = False
 
 
 class UserResponse(BaseModel):
@@ -42,6 +43,7 @@ class UserResponse(BaseModel):
     username: str
     display_name: str
     role: str
+    must_change_password: bool = False
 
 
 # ── 工具函数 ──────────────────────────────────────────────────
@@ -65,7 +67,7 @@ def _create_token(user_id: str) -> str:
     """签发 JWT access_token。"""
     from jose import jwt
 
-    secret = settings.SESSION_SECRET_KEY or settings.app_name
+    secret = get_session_secret()
     expire = datetime.utcnow() + timedelta(minutes=settings.SESSION_EXPIRE_MINUTES)
     payload = {
         'sub': user_id,
@@ -79,7 +81,7 @@ def _decode_token(token: str) -> str | None:
     """验证并解码 JWT，返回 user_id；失败返回 None。"""
     from jose import jwt, JWTError
 
-    secret = settings.SESSION_SECRET_KEY or settings.app_name
+    secret = get_session_secret()
     try:
         payload = jwt.decode(token, secret, algorithms=['HS256'])
         return payload.get('sub')
@@ -122,7 +124,10 @@ async def login(
 
     token = _create_token(user.id)
     logger.info('用户登录成功: %s (%s)', user.username, user.id)
-    return TokenResponse(access_token=token)
+    return TokenResponse(
+        access_token=token,
+        must_change_password=bool(getattr(user, 'must_change_password', False)),
+    )
 
 
 @router.post('/register', response_model=TokenResponse)
@@ -151,7 +156,10 @@ async def register(
 
     token = _create_token(user.id)
     logger.info('新用户注册: %s (%s)', user.username, user.id)
-    return TokenResponse(access_token=token)
+    return TokenResponse(
+        access_token=token,
+        must_change_password=False,
+    )
 
 
 @router.get('/me', response_model=UserResponse)
@@ -178,4 +186,43 @@ async def me(
         username=user.username,
         display_name=user.display_name or user.username,
         role=user.role or 'user',
+        must_change_password=bool(getattr(user, 'must_change_password', False)),
     )
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=4, max_length=128)
+
+
+@router.post('/change-password', response_model=TokenResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(_get_db_session),
+):
+    """修改密码：校验旧密码后更新，并清除首登强制改密标记。"""
+    from app.models.user import User
+
+    user_id = getattr(request.state, 'user_id', None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail='未登录')
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail='用户不存在')
+
+    if not _verify_password(body.old_password, user.password_hash):
+        raise HTTPException(status_code=400, detail='旧密码错误')
+
+    if body.old_password == body.new_password:
+        raise HTTPException(status_code=400, detail='新密码不能与旧密码相同')
+
+    user.password_hash = _hash_password(body.new_password)
+    user.must_change_password = False
+    await db.commit()
+
+    token = _create_token(user.id)
+    logger.info('用户修改密码成功: %s (%s)', user.username, user.id)
+    return TokenResponse(access_token=token)

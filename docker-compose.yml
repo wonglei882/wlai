@@ -6,6 +6,8 @@
 # 日志: docker compose logs -f
 # 停止: docker compose down
 
+name: wlai
+
 services:
   db:
     image: postgres:16-alpine
