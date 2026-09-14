@@ -12,6 +12,7 @@
 所有 LLM/多模态调用失败时按"放行 + 记录"处理，绝不因守护逻辑异常阻断生产。
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,14 +20,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.comic_bible import (
-    CharacterCard, SettingBible, ComicEpisode,
+    CharacterCard,
+    ComicEpisode,
+    SettingBible,
 )
-from app.models.comic_shot import Shot, ShotAsset
 from app.models.comic_review import ReviewCheckpoint
-from app.services.pm.scanner_base import ScanIssue
+from app.models.comic_shot import Shot, ShotAsset
+from app.models.pm_consistency_state_comic import PMConsistencyStateComic
 from app.services.pm.feature_config import pm_feature_config
-
-import logging
+from app.services.pm.scanner_base import ScanIssue
 
 logger = logging.getLogger(__name__)
 
@@ -204,11 +206,20 @@ class ComicConsistencyGuardian:
             return GateResult(passed=True, summary='守护未启用，放行')
         try:
             if target_status == 'pending_image':
-                return await self._gate_to_image(db, shot, user_id)
+                result = await self._gate_to_image(db, shot, user_id)
+                if result.passed:
+                    await self._snapshot_after_gate(db, shot, 'pending_image', result)
+                return result
             if target_status == 'pending_review_image':
-                return await self._gate_to_review(db, shot, user_id)
+                result = await self._gate_to_review(db, shot, user_id)
+                if result.passed:
+                    await self._snapshot_after_gate(db, shot, 'pending_review_image', result)
+                return result
             if target_status == 'pending_video':
-                return await self._gate_to_video(db, shot, user_id)
+                result = await self._gate_to_video(db, shot, user_id)
+                if result.passed:
+                    await self._snapshot_after_gate(db, shot, 'pending_video', result)
+                return result
             return GateResult(passed=True, summary='无需门控，放行')
         except Exception as e:
             logger.warning(
@@ -216,6 +227,92 @@ class ComicConsistencyGuardian:
                 getattr(shot, 'id', '?'), target_status, e,
             )
             return GateResult(passed=True, summary=f'门控异常降级放行: {e}')
+
+    async def _snapshot_after_gate(
+        self,
+        db: AsyncSession,
+        shot: Shot,
+        gate_name: str,
+        result: GateResult | None = None,
+    ) -> None:
+        """门控通过后写入漫剧一致性快照（upsert，一镜一条）。
+
+        采集该镜头门控时刻的状态：
+        - character_visual_states: 镜头引用角色的定稿外貌（来自 CharacterCard）
+        - scene_state: 场景类型 + 画面描述
+        - camera_state: 镜头运动 + 景别
+        - forward: 与前一镜的衔接（前镜号 + 视觉相似度评分）
+        - backward_consistency_score: 本次门控的视觉一致性评分
+        - global_sequence: 镜头号（作为全局序列基准）
+
+        任何异常静默降级（仅记日志），绝不阻断门控主流程。
+        """
+        try:
+            # 角色视觉状态：镜头引用角色 → 查角色卡取外貌
+            char_visual: dict[str, dict] = {}
+            meta = getattr(shot, 'metadata_json', None)
+            matched = meta.get('matched_characters', []) if isinstance(meta, dict) else []
+            if matched:
+                cards = (await db.execute(
+                    select(CharacterCard).where(
+                        CharacterCard.project_id == shot.project_id,
+                        CharacterCard.name.in_(matched),
+                    )
+                )).scalars().all()
+                for c in cards:
+                    bits = [b for b in (c.hair, c.eyes, c.outfit) if b]
+                    char_visual[c.name] = {'appearance': '，'.join(bits)}
+
+            scene_state = {
+                'scene_type': shot.scene_type or '',
+                'visual_description': (shot.visual_description or '')[:200],
+            }
+            camera_state = {
+                'camera_movement': shot.camera_movement or '',
+                'scene_type': shot.scene_type or '',
+            }
+            forward = {}
+            if shot.shot_number and shot.shot_number > 1:
+                # 前一镜号（同一分镜表内）
+                prev_sn = shot.shot_number - 1
+                forward['prev_shot_number'] = prev_sn
+            if result is not None and result.score is not None:
+                forward['similarity'] = result.score
+
+            # 存在则更新，否则插入（UniqueConstraint project_id+shot_id）
+            existing = (await db.execute(
+                select(PMConsistencyStateComic).where(
+                    PMConsistencyStateComic.project_id == shot.project_id,
+                    PMConsistencyStateComic.shot_id == shot.id,
+                )
+            )).scalar_one_or_none()
+
+            if existing:
+                existing.character_visual_states = char_visual
+                existing.scene_state = scene_state
+                existing.camera_state = camera_state
+                existing.forward = forward
+                if result is not None and result.score is not None:
+                    existing.backward_consistency_score = result.score
+                existing.global_sequence = shot.shot_number
+                db.add(existing)
+            else:
+                db.add(PMConsistencyStateComic(
+                    project_id=shot.project_id,
+                    episode_id=getattr(shot, 'episode_id', None),
+                    shot_id=shot.id,
+                    shot_number=shot.shot_number,
+                    character_visual_states=char_visual,
+                    scene_state=scene_state,
+                    camera_state=camera_state,
+                    forward=forward,
+                    backward_consistency_score=result.score if result is not None else None,
+                    global_sequence=shot.shot_number,
+                ))
+            await db.flush()
+            logger.info('[ComicGuardian] 一致性快照写入 shot=%s gate=%s', shot.id, gate_name)
+        except Exception as e:
+            logger.warning('[ComicGuardian] 快照写入降级跳过 shot=%s: %s', getattr(shot, 'id', '?'), e)
 
     async def _gate_to_image(self, db: AsyncSession, shot: Shot, user_id: str) -> GateResult:
         """出图前预检 — 校验镜头引用的角色是否已建立角色卡。
