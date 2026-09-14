@@ -65,6 +65,7 @@ class TestScanRegistry:
         'scene_continuity',
         'panel_transition',
         'dialogue_bubble',
+        'comic_quality_score',
     }
 
     def test_registry_contains_expected_dimensions(self):
