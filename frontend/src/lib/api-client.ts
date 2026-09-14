@@ -165,6 +165,11 @@ export const api = {
       `api/pm/decisions?project_id=${projectId}&limit=${limit}`
     ),
 
+  getDecisionDetail: (decisionId: string) =>
+    request<import("@/types").PMDecisionDetail>(
+      `api/pm/decisions/${decisionId}`
+    ),
+
   submitDecisionFeedback: (decisionId: string, feedback: string, comment?: string) =>
     request<Record<string, unknown>>(
       `api/pm/decisions/${decisionId}/feedback?feedback=${feedback}&comment=${encodeURIComponent(comment || "")}`,

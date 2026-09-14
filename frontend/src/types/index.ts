@@ -78,6 +78,43 @@ export interface PMDecision {
   user_feedback: string | null
   feedback_note: string | null
   created_at: string
+  // Phase 4.2 审核面板补充字段
+  fix_attempted?: boolean
+  audit?: DecisionAuditSummary | null
+}
+
+/** 监督层审核摘要（列表接口返回，从 fix_details 解析） */
+export interface DecisionAuditSummary {
+  score: string // A / B / C / D
+  summary: string
+  passed: boolean
+  has_red_line: boolean
+  issue_count: number
+}
+
+/** 监督层单条审核问题 */
+export interface AuditIssue {
+  severity: string // critical / warning / info
+  check_item: string
+  problem: string
+  suggestion: string
+  red_line_id: string | null
+}
+
+/** 监督层审核报告（详情接口返回） */
+export interface AuditReport {
+  score: string // A / B / C / D
+  summary: string
+  passed: boolean
+  issues: AuditIssue[]
+}
+
+/** 单条决策详情（含 fix_details 与完整审核报告） */
+export interface PMDecisionDetail extends PMDecision {
+  fix_details: Record<string, unknown> | string | null
+  audit_report?: AuditReport | null
+  feedback_at: string | null
+  scan_round: string | null
 }
 
 export interface DiagnosticLog {

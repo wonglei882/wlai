@@ -6,20 +6,22 @@ import { api } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import {
   ThumbsUp, ThumbsDown, Loader2, ArrowLeft, CheckCircle2, XCircle,
+  ChevronDown, ChevronUp, ShieldAlert,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
+import { AuditPanel } from "@/components/pm/audit-panel"
 
 export default function DecisionsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: projectId } = use(params)
   const queryClient = useQueryClient()
   const [feedbackId, setFeedbackId] = useState<string | null>(null)
   const [feedbackNote, setFeedbackNote] = useState("")
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ["pm-decisions", projectId],
@@ -116,6 +118,14 @@ export default function DecisionsPage({ params }: { params: Promise<{ id: string
                       {d.user_feedback === "approved" && (
                         <Badge variant="success">已采纳</Badge>
                       )}
+                      {d.audit && (
+                        <Badge
+                          variant={d.audit.has_red_line ? "destructive" : d.audit.passed ? "success" : "warning"}
+                        >
+                          {d.audit.has_red_line && <ShieldAlert className="mr-1 h-3 w-3" />}
+                          审核 {d.audit.score}
+                        </Badge>
+                      )}
                     </div>
                     <span className="text-xs text-muted-foreground shrink-0">
                       {d.created_at ? new Date(d.created_at).toLocaleString("zh-CN") : ""}
@@ -186,6 +196,34 @@ export default function DecisionsPage({ params }: { params: Promise<{ id: string
                     <p className="text-xs text-muted-foreground mt-2 italic">
                       备注：{d.feedback_note}
                     </p>
+                  )}
+
+                  {/* 监督层审核报告（Phase 4.2 审核面板入口） */}
+                  {(d.audit || expandedAuditId === d.id) && (
+                    <div className="mt-3 pt-3 border-t">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        onClick={() => setExpandedAuditId(expandedAuditId === d.id ? null : d.id)}
+                      >
+                        {expandedAuditId === d.id ? (
+                          <ChevronUp className="mr-1 h-3 w-3" />
+                        ) : (
+                          <ChevronDown className="mr-1 h-3 w-3" />
+                        )}
+                        监督层审核报告
+                      </Button>
+                      {expandedAuditId === d.id && (
+                        <div className="mt-2">
+                          <AuditPanel
+                            decisionId={d.id}
+                            summary={d.audit ?? undefined}
+                            alreadyFeedback={Boolean(d.user_feedback)}
+                          />
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               ))}
