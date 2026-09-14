@@ -26,6 +26,7 @@ COPY backend/app ./app
 COPY backend/migrations ./migrations
 COPY backend/alembic.ini ./alembic.ini
 COPY backend/data/knowledge_seed ./data/knowledge_seed
+COPY backend/data/knowledge_packs ./data/knowledge_packs
 
 # 创建数据与日志目录
 RUN mkdir -p logs data/chroma_db && chown -R appuser:appuser /app
