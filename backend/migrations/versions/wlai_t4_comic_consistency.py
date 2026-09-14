@@ -1,6 +1,6 @@
 """add comic consistency snapshot table
 
-Revision ID: wlai_add_pm_consistency_state_comic
+Revision ID: wlai_t4_comic_consistency
 Revises: wlai_add_pm_evolution
 Create Date: 2026-09-14
 
@@ -14,7 +14,8 @@ from alembic import op
 import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
-revision: str = 'wlai_add_pm_consistency_state_comic'
+# 注意: revision 长度须 <= 32，alembic_version.version_num 为 varchar(32)
+revision: str = 'wlai_t4_comic_consistency'
 down_revision: Union[str, Sequence[str], None] = 'wlai_add_pm_evolution'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
