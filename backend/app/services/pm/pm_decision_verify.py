@@ -3,7 +3,13 @@ PM Agent 决策验证层 — 修复执行 + 偏离检查 + 验证
 
 从 pm_agent_decision.py 拆分而来，用于降低单文件复杂度（控制单文件行数）。
 
+三层架构定位：本模块是「执行层 + 监督层」的桥接——
+- 执行层：_execute_and_verify() 执行修复
+- 监督层：VerifySupervisor.audit_fix_result() 审核修复结果，产出 AuditReport
+- 决策层：消费 AuditReport（passed / 红线命中）决定后续动作
+
 包含：
+- VerifySupervisor()：监督层实现（只审核不修改，产出 AuditReport）
 - _execute_and_verify()：对 auto_fix/manual/skip 决策执行修复、偏离检查与验证
 """
 
@@ -21,8 +27,142 @@ from app.services.pm.pm_fix_handlers import (
     _check_goal_drift,
     _classify_failure,
 )
+from app.services.pm.supervisor import (
+    Supervisor,
+    AuditReport,
+    AuditIssue,
+    register_supervisor,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class VerifySupervisor(Supervisor):
+    """监督层核心实现 — 对 issue 与修复结果进行审核，产出 AuditReport。
+
+    只审核不修改：audit 系列方法不写任何业务表，仅生成审核结论。
+    注册到全局监督器注册表，供决策层 / API 按名称取用。
+    """
+
+    name = 'verify_supervisor'
+
+    async def audit(
+        self,
+        issue: dict[str, Any],
+        project_id: str,
+        user_id: str,
+        db,
+    ) -> AuditReport:
+        """前置审核：检查 issue 严重性、红线标记、信息完整性。
+
+        - 命中红线标记（issue['red_line_id']）→ critical 审核问题
+        - severity=critical → 审核问题
+        - 缺少关键字段（chapter/chapter_number）→ warning 审核问题
+        """
+        report = AuditReport(score='B', summary=f'前置审核: {issue.get("type", "unknown")}')
+
+        # 红线标记检测
+        red_line_id = issue.get('red_line_id')
+        if red_line_id:
+            report.add_issue(
+                AuditIssue(
+                    severity='critical',
+                    check_item='red_line_violation',
+                    problem=f'命中红线规则 {red_line_id}: {issue.get("message", "")}',
+                    suggestion='命中红线，必须转人工处理，禁止自动修复',
+                    red_line_id=str(red_line_id),
+                )
+            )
+            report.score = 'D'
+            report.summary = f'命中红线 {red_line_id}，转人工处理'
+
+        # 严重级别审核
+        severity = issue.get('severity', 'warning')
+        if severity == 'critical' and not red_line_id:
+            report.add_issue(
+                AuditIssue(
+                    severity='critical',
+                    check_item='severity',
+                    problem=f'critical 级别问题: {issue.get("message", "")}',
+                    suggestion='建议人工确认后再决定修复方案',
+                )
+            )
+            report.score = 'C'
+
+        # 信息完整性
+        if not issue.get('chapter') and not issue.get('chapter_number'):
+            report.add_issue(
+                AuditIssue(
+                    severity='warning',
+                    check_item='info_completeness',
+                    problem='issue 缺少 chapter/chapter_number 字段',
+                    suggestion='补充章节号可提升修复定位精度',
+                )
+            )
+
+        return report
+
+    async def audit_fix_result(
+        self,
+        issue: dict[str, Any],
+        fix_action: str,
+        project_id: str,
+        user_id: str,
+        db,
+    ) -> AuditReport:
+        """修复结果审核：检查 fix_action 完整性与失败特征。
+
+        - fix_action 为空 → 审核不通过
+        - fix_action 含异常前缀 → critical
+        - fix_action 含失败关键词 → warning
+        """
+        report = AuditReport(score='B', summary='修复结果审核')
+
+        if not fix_action or not str(fix_action).strip():
+            report.add_issue(
+                AuditIssue(
+                    severity='critical',
+                    check_item='fix_result',
+                    problem='修复动作为空，修复未执行',
+                    suggestion='检查修复 handler 是否被正确调用',
+                )
+            )
+            report.score = 'D'
+            return report
+
+        fix_str = str(fix_action)
+        if fix_str.startswith('修复执行异常'):
+            report.add_issue(
+                AuditIssue(
+                    severity='critical',
+                    check_item='fix_result',
+                    problem=f'修复执行异常: {fix_str[:200]}',
+                    suggestion='检查修复逻辑，或转人工处理',
+                )
+            )
+            report.score = 'D'
+            return report
+
+        # 失败关键词检测（尽力而为，不阻塞主流程）
+        fail_keywords = ('失败', '跳过', 'fallback', '降级', '异常')
+        matched = [kw for kw in fail_keywords if kw in fix_str]
+        if matched:
+            report.add_issue(
+                AuditIssue(
+                    severity='warning',
+                    check_item='fix_partial',
+                    problem=f'修复可能不完整（含关键词: {", ".join(matched)}）',
+                    suggestion='人工复核修复效果，必要时重新修复',
+                )
+            )
+            report.score = 'C'
+
+        return report
+
+
+# 注册监督器（模块加载即注册，供全局按名取用）
+_verify_supervisor = VerifySupervisor()
+register_supervisor(_verify_supervisor)
 
 
 async def _record_decision_failure(db, project_id: str, diag_type: str, verify_message: str) -> None:
@@ -162,6 +302,59 @@ async def _execute_and_verify(
     verified = False
     verified_at = None
     verify_message = ''
+
+    # ===== 监督层前置审核：修复前对 issue 审核（红线命中则拦截自动修复） =====
+    pre_audit: AuditReport | None = None
+    try:
+        pre_audit = await _verify_supervisor.audit(issue, project_id, user_id, db)
+        if pre_audit and pre_audit.has_red_line():
+            # 命中红线：拦截自动修复，转人工
+            logger.warning(
+                f'[PM-Agent 监督层] 红线拦截自动修复: {diag_type} (red_line={pre_audit.issues[0].red_line_id})'
+            )
+            result = {
+                'type': diag_type,
+                'severity': severity,
+                'decision': 'manual',
+                'fix_action': '',
+                'fix_result': 'skipped',
+                'fix_attempted': False,
+                'verified': False,
+                'verify_message': f'命中红线（{pre_audit.issues[0].red_line_id}），转人工处理',
+                'decision_log_id': None,
+            }
+            return result, {'pre_audit': pre_audit.to_dict()}
+    except Exception as pre_audit_e:
+        logger.debug(f'[PM-Agent 监督层] 前置审核失败（非阻塞，继续自动修复）: {pre_audit_e}')
+
+    # ===== 题材知识包注入：修复执行前为 issue 注入题材上下文（非阻塞） =====
+    # 供 fix handler 组装 LLM prompt 时参考题材专属修复策略/叙事手法
+    # （知识包缺失/加载失败 → 跳过注入，不影响自动修复流程）
+    try:
+        from sqlalchemy import select as _kp_select
+        from app.models.project import Project as _Project
+        from app.services.pm.knowledge_pack import knowledge_pack_loader
+
+        _genre_r = await db.execute(_kp_select(_Project.genre).where(_Project.id == project_id))
+        _genre = _genre_r.scalar() or ''
+        if _genre:
+            _kp = knowledge_pack_loader.get_pack_for_genre(_genre)
+            if _kp and (_kp.readme or _kp.narrative_techniques or _kp.fix_strategies):
+                issue['_knowledge_context'] = {
+                    'genre': _genre,
+                    'theme_id': _kp.pack_id,
+                    'readme_excerpt': _kp.readme[:800],
+                    'narrative_excerpt': _kp.narrative_techniques[:800],
+                    'fix_strategies': _kp.fix_strategies,
+                    'red_lines': _kp.red_lines,
+                }
+                logger.info(
+                    '[PM-Agent] 题材知识包已注入: genre=%s theme=%s fix_strategies=%d',
+                    _genre, _kp.pack_id, len(_kp.fix_strategies),
+                )
+    except Exception as _kp_e:
+        logger.debug(f'[PM-Agent] 题材知识包注入失败（非阻塞）: {_kp_e}')
+
     try:
         if is_lower_risk:
             issue['_suggestion_only'] = True
@@ -252,6 +445,20 @@ async def _execute_and_verify(
             except Exception as alert_e:
                 logger.warning(f'[PM-Agent 决策] 写修复失败告警失败（非阻塞）: {alert_e}')
 
+    # ===== 监督层审核：对修复结果生成 AuditReport（只审核不修改） =====
+    audit_report: AuditReport | None = None
+    try:
+        audit_report = await _verify_supervisor.audit_fix_result(
+            issue, fix_action, project_id, user_id, db
+        )
+        if audit_report and not audit_report.passed:
+            logger.warning(
+                f'[PM-Agent 监督层] 修复结果审核未通过: {diag_type} '
+                f'(score={audit_report.score}, issues={len(audit_report.issues)})'
+            )
+    except Exception as audit_e:
+        logger.debug(f'[PM-Agent 监督层] 修复结果审核失败（非阻塞）: {audit_e}')
+
     # L5 反思闭环：failed/partial 均回写失败根因（供下轮决策注入与降级）
     if fix_result in ('failed', 'partial'):
         await _record_decision_failure(db, project_id, diag_type, verify_message)
@@ -266,6 +473,7 @@ async def _execute_and_verify(
         'verified_at': verified_at,
         'verify_message': verify_message,
         'drift_result': drift_result,
+        'audit_report': audit_report.to_dict() if audit_report else None,
         '_fix_start_time': fix_start_time,
     }
     return None, exec_state
