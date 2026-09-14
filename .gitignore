@@ -35,3 +35,12 @@ Thumbs.db
 # 临时文件
 *.log
 .tmp/
+
+# AI 规划/运行产物（不入库）
+task_plan.md
+findings.md
+progress.md
+.omo/
+.superpowers/
+_sync_tmp/
+backend/.coverage
