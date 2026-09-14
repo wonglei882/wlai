@@ -1,20 +1,41 @@
-"""PM 维度基类 — 每个维度自包含 scan + fix + verify，加新维度只需加文件。"""
+"""PM 维度基类 — 每个维度自包含 scan + fix + verify，加新维度只需加文件。
+
+三层架构中的「执行层」抽象：
+- 统一 DimensionBase 作为所有扫描/修复/验证维度的基类
+- scan() 返回 list[ScanIssue]（结构化输出，兼容 dict 适配）
+- fix() 返回 fix_action 描述
+- verify() 返回 (passed, message)
+
+与 scanner_base.py 的关系：
+- ScanIssue 定义在 scanner_base.py 中，此处 re-export 保持单一事实来源
+- BaseScanner 定义在 scanner_base.py（接口与 DimensionBase 对齐：name/issue_type/scan）
+- 两个抽象面向不同侧重点：DimensionBase 侧重 scan+fix+verify 三方法闭环，
+  BaseScanner 侧重扫描器标准接口 + to_diagnostic_message 扩展
+"""
 
 from abc import ABC, abstractmethod
 from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Re-export ScanIssue（保持单一事实来源在 scanner_base.py）
+from app.services.pm.scanner_base import ScanIssue as ScanIssue  # noqa: F401
+
 
 class DimensionBase(ABC):
-    """维度基类：子类实现 scan/fix/verify 三个方法。"""
+    """维度基类：子类实现 scan/fix/verify 三个方法。
+
+    scan() 返回 ScanIssue 列表（推荐）或 dict 列表（向后兼容），
+    fix() 返回修复动作描述字符串，
+    verify() 返回 (passed, message) 元组。
+    """
 
     name: str = ''
     issue_type: str = ''
     severity: str = 'warning'  # critical / warning / info
 
     @abstractmethod
-    async def scan(self, db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
-        """扫描问题，返回 issue 列表。"""
+    async def scan(self, db: AsyncSession, project_id: str, user_id: str) -> list[Any]:
+        """扫描问题，返回 ScanIssue 列表（或兼容的 dict 列表）。"""
         ...
 
     @abstractmethod

@@ -5,10 +5,15 @@
 - BaseScanner: 抽象基类，定义 scan() + to_diagnostic_message() 接口
 - ScannerAdapter: 将裸函数适配为 BaseScanner 接口（向后兼容 @scan_dimension）
 
+与 dims/base.py 的关系：
+- DimensionBase 是统一维度基类（scan + fix + verify 三方法）
+- BaseScanner 继承 DimensionBase（扫描器侧标准接口，to_diagnostic_message 扩展）
+- ScanIssue 定义在本文件，dims/base.py re-export（单一事实来源）
+
 新增巡检维度推荐继承 BaseScanner，也可继续使用 @scan_dimension 装饰器。
 """
 
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -44,9 +49,11 @@ class ScanIssue:
         }
 
 
-class BaseScanner(ABC):
+class BaseScanner:
     """巡检维度抽象基类 — 标准化扫描接口。
 
+    继承统一 DimensionBase（dims/base.py，惰性 resolve 避免循环 import
+    —— 调用方确保 dims.base 已加载即可，此处不强制继承以保持模块独立）。
     子类必须实现:
         - name: 维度标识（如 'character_consistency'）
         - issue_type: 诊断类型（如 'pm_agent_character_jump'）
