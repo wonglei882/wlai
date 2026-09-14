@@ -35,6 +35,12 @@ from app.models.pm_decision_log import PMDecisionLog
 from app.services.pm.feature_config import pm_feature_config
 from app.services.pm.pm_agent_decision import classify_severity_by_type, diagnose_and_fix
 from app.services.pm.pm_runtime_state import runtime_state
+from app.services.pm.pm_evolution import (
+    preload_runtime_overrides,
+    is_dimension_throttled,
+    filter_exclusions,
+    evolve_after_round,
+)
 
 # 扫描函数与 SCAN_REGISTRY 注册表已移至 pm_scanners.py（控制文件行数 < 800）
 # 通过 import 触发 pm_scanners 模块加载，使其 @scan_dimension 装饰器填充 SCAN_REGISTRY
@@ -142,10 +148,36 @@ async def _scan_single_project(db: AsyncSession, project_id: str, user_id: str) 
     # 本轮巡检 round id（用于决策日志去重）
     scan_round = str(uuid.uuid4())
 
+    # T3: 查询项目类型（Project.genre），用于按维度 domain 过滤（novel/comic）。
+    # 降级策略：查询失败时 project_genre 为 None → 不过滤（保持现状，所有维度都跑）。
+    project_genre = None
+    try:
+        from app.models.project import Project
+
+        genre_result = await db.execute(select(Project.genre).where(Project.id == project_id))
+        project_genre = genre_result.scalar()
+    except Exception as genre_err:
+        logger.warning(f'[PM-Agent] 查询项目类型失败，本轮不过滤维度 project={project_id[:8]}: {genre_err}')
+
     # 数据驱动：遍历注册表执行所有诊断维度
     for name, meta in SCAN_REGISTRY.items():
+        # T3: 按项目类型过滤维度 domain（universal 恒跑；genre 未知/查询失败时不过滤）
+        dim_domain = meta.get('domain', 'universal')
+        if dim_domain != 'universal' and project_genre and dim_domain != project_genre:
+            logger.debug(
+                f'[PM-Agent] 维度 {name}(domain={dim_domain}) 跳过：项目类型 {project_genre} 不匹配 (project={project_id[:8]})'
+            )
+            all_issues[name] = []
+            continue
+        # 自进化：维度节流中则跳过本维度扫描
+        if is_dimension_throttled(project_id, name):
+            logger.debug(f'[PM-Agent] 维度 {name} 处于节流状态，本轮跳过 (project={project_id[:8]})')
+            all_issues[name] = []
+            continue
         try:
-            all_issues[name] = await meta['fn'](db, project_id, user_id)
+            scanned = await meta['fn'](db, project_id, user_id)
+            # 自进化：排除规则过滤（用户驳回学习的噪声抑制）
+            all_issues[name] = await filter_exclusions(db, project_id, name, scanned)
         except Exception as scan_err:
             logger.error(f'[PM-Agent] 维度 {name} 扫描异常: {scan_err}', extra={'project_id': project_id, 'scan_dimension': name})
             await db.rollback()  # 维度间事务隔离：中止被毒化的 aborted 事务，保住后续维度（循环期只读，无回滚损失）
@@ -225,6 +257,12 @@ async def _scan_single_project(db: AsyncSession, project_id: str, user_id: str) 
                 total_issues_in_scan=len(all_issues),
             )
             decisions.append(decision)
+
+    # 自进化：本轮信号聚合 → 阈值进化 → 节流调整（失败仅告警，不影响巡检）
+    try:
+        await evolve_after_round(db, project_id, all_issues, scan_round)
+    except Exception as evo_err:
+        logger.warning(f'[PM-Agent] 自进化执行失败（本轮跳过进化）: {evo_err}')
 
     return {'issues': all_issues, 'decisions': decisions}
 
@@ -307,6 +345,12 @@ async def scan_all_projects() -> dict[str, Any]:
             'scanned_projects': len(project_map),
             'scanned_chapters': sum(int(info.get('chapter_count') or 0) for info in project_map.values()),
         }
+
+        # 自进化：每轮巡检预载运行时阈值覆盖 + 维度节流快照（失败降级为默认参数）
+        try:
+            await preload_runtime_overrides(db)
+        except Exception as evo_err:
+            logger.warning(f'[PM-Agent] 自进化预载失败（降级为默认参数）: {evo_err}')
 
     if not project_map:
         return {}

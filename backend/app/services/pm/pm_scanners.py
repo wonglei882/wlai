@@ -70,7 +70,7 @@ MIN_SAMPLES_FOR_ZSCORE = 5
 SCAN_REGISTRY: dict[str, dict[str, Any]] = {}
 
 
-def scan_dimension(name: str, issue_type: str, diag_msg_fn):
+def scan_dimension(name: str, issue_type: str, diag_msg_fn, domain: str = 'universal'):
     """
     注册一个诊断维度。
 
@@ -78,6 +78,9 @@ def scan_dimension(name: str, issue_type: str, diag_msg_fn):
         name: 维度标识（如 "character_consistency"）
         issue_type: PM 诊断类型（如 "pm_agent_character_jump"）
         diag_msg_fn: 从 issue dict 生成诊断消息的函数
+        domain: 维度适用项目类型域，取值 'novel'/'comic'/'universal'。
+            'universal' 对所有项目恒跑；'novel'/'comic' 仅对 genre 匹配的项目跑
+            （_scan_single_project 按 Project.genre 过滤，见 pm_agent.py）。
 
     Raises:
         ValueError: 重复注册同名维度（防止无声覆盖）
@@ -96,6 +99,7 @@ def scan_dimension(name: str, issue_type: str, diag_msg_fn):
             'fn': fn,
             'issue_type': issue_type,
             'diag_msg_fn': diag_msg_fn,
+            'domain': domain,
         }
         return fn
 
@@ -111,6 +115,7 @@ def scan_dimension(name: str, issue_type: str, diag_msg_fn):
     'character_consistency',
     'pm_agent_character_jump',
     lambda i: f'[PM-Agent] 角色 {i.get("character", "")} 位置跳变 {i.get("from", "")} → {i.get("to", "")}',
+    domain='novel',
 )
 async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
     """检测角色的位置/关系在相邻章节间的跳变（Z-score 异常检测）。
@@ -217,6 +222,7 @@ async def _scan_character_consistency(db: AsyncSession, project_id: str, user_id
     'foreshadow_age',
     'pm_agent_foreshadow_stale',
     lambda i: f'[PM-Agent] 伏笔「{i.get("title", "")}」已埋 {i.get("age", 0)} 章仍未解决',
+    domain='novel',
 )
 async def _scan_foreshadow_age(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
     """检测 planted 超过阈值的伏笔（可能已失效）。"""
@@ -324,6 +330,7 @@ async def _scan_unresolved_diagnostics(db: AsyncSession, project_id: str, user_i
     'world_rule_drift',
     'pm_agent_world_drift',
     lambda i: f'[PM-Agent] 世界观规则漂移（第{i.get("from_chapter")}章→{i.get("to_chapter")}章）',
+    domain='novel',
 )
 async def _scan_world_rule_drift(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
     """检测世界观规则在相邻章节间的漂移（通过 PMConsistencyState 的 world_states hash）。"""
@@ -413,6 +420,7 @@ _OUTLINE_DRIFT_SQL = text("""
     'outline_drift',
     'pm_agent_outline_drift',
     lambda i: f'[PM-Agent] 大纲漂移: {"; ".join(i.get("drifts", [])[:2])}',
+    domain='novel',
 )
 async def _scan_outline_drift(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
     """检测大纲漂移：对比相邻章节的大纲内容，检测结构变化。"""
@@ -463,6 +471,7 @@ QUALITY_SCORE_THRESHOLD = 70
         f'[PM-Agent] 第{i.get("chapter_number", "?")}章质量评分 {i.get("total_score", 0):.1f} < {_get_param("quality_score", "score_threshold", QUALITY_SCORE_THRESHOLD)}'
         f'，低分维度: {";".join(i.get("low_dims", []))}'
     ),
+    domain='novel',
 )
 async def _scan_quality_score(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
     """对最新章节执行 7 维质量评分（pacing/dialogue/hook/...），低于阈值生成 issue。
@@ -541,6 +550,7 @@ PARAGRAPH_LONG_THRESHOLD = 3
         f'[PM-Agent] 第{i.get("chapter_number", "?")}章有 {i.get("long_para_count", 0)} 个超长段落（>{_get_param("paragraph_format", "max_chars", PARAGRAPH_MAX_CHARS)}字）'
         f'，总计 {i.get("total_paras", 0)} 段'
     ),
+    domain='novel',
 )
 async def _scan_paragraph_format(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
     """检测最新章节中超过 110 字的段落数量（与 _format.py 的 _MAX_PARA 对齐）。
@@ -676,10 +686,23 @@ async def _adapt_dialogue_bubble(db: AsyncSession, project_id: str, user_id: str
         return []
 
 
+async def _adapt_comic_quality_score(db: AsyncSession, project_id: str, user_id: str) -> list[dict[str, Any]]:
+    """漫剧质量评分扫描适配器。"""
+    try:
+        from app.domain_engines.comic.quality_scorer import ComicQualityScorer
+
+        issues = await ComicQualityScorer().scan(db, project_id, user_id)
+        return [i.to_dict() for i in issues]
+    except Exception as e:
+        logger.debug(f'[PM-Agent] comic_quality_score 跳过（可能非漫剧项目）: {e}')
+        return []
+
+
 # 注册漫剧事后巡检维度（SCAN_REGISTRY 数据驱动注册）
 @scan_dimension(
     'visual_consistency', 'ca_visual_inconsistency',
     lambda i: f'[CA] 视觉不一致: {i.get("message", "")}',
+    domain='comic',
 )
 async def _scan_visual_consistency(db, project_id, user_id):
     return await _adapt_visual_consistency(db, project_id, user_id)
@@ -688,6 +711,7 @@ async def _scan_visual_consistency(db, project_id, user_id):
 @scan_dimension(
     'scene_continuity', 'ca_scene_discontinuity',
     lambda i: f'[CA] 场景跳变: {i.get("message", "")}',
+    domain='comic',
 )
 async def _scan_scene_continuity(db, project_id, user_id):
     return await _adapt_scene_continuity(db, project_id, user_id)
@@ -696,6 +720,7 @@ async def _scan_scene_continuity(db, project_id, user_id):
 @scan_dimension(
     'panel_transition', 'ca_panel_transition',
     lambda i: f'[CA] 分镜衔接: {i.get("message", "")}',
+    domain='comic',
 )
 async def _scan_panel_transition(db, project_id, user_id):
     return await _adapt_panel_transition(db, project_id, user_id)
@@ -704,6 +729,16 @@ async def _scan_panel_transition(db, project_id, user_id):
 @scan_dimension(
     'dialogue_bubble', 'ca_dialogue_inconsistency',
     lambda i: f'[CA] 对话跳变: {i.get("message", "")}',
+    domain='comic',
 )
 async def _scan_dialogue_bubble(db, project_id, user_id):
     return await _adapt_dialogue_bubble(db, project_id, user_id)
+
+
+@scan_dimension(
+    'comic_quality_score', 'ca_quality_low',
+    lambda i: f'[CA] 质量评分低: {i.get("message", "")}',
+    domain='comic',
+)
+async def _scan_comic_quality_score(db, project_id, user_id):
+    return await _adapt_comic_quality_score(db, project_id, user_id)
