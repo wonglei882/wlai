@@ -117,6 +117,43 @@ async def _decide_action(
     - 否则进入修复执行阶段。
     """
     has_fix = _has_auto_fix(diag_type)
+
+    # --- 红线拦截（最高优先级）：命中红线 → 强制转人工，禁止自动修复 ---
+    red_line_id = issue.get('red_line_id')
+    if red_line_id:
+        logger.warning(
+            f'[PM-Agent 决策] 红线拦截自动修复: type={diag_type} project={project_id[:8]} red_line={red_line_id}'
+        )
+        _rl_msg = f'命中红线「{issue.get("red_line_name", red_line_id)}」，禁止自动修复，等待人工处理'
+        try:
+            await _log_deduped_decision(
+                db=db,
+                project_id=project_id,
+                user_id=user_id,
+                issue=issue,
+                severity=severity,
+                scan_round=scan_round,
+                original_message=original_message,
+                decision='manual',
+                decision_reason=_rl_msg,
+                verify_message=_rl_msg,
+                fix_result='skipped',
+            )
+        except Exception as _rl_log_e:
+            logger.warning(f'[PM-Agent 决策] 红线拦截日志失败（非阻塞）: {_rl_log_e}')
+        result = {
+            'type': diag_type,
+            'severity': severity,
+            'decision': 'manual',
+            'fix_action': '',
+            'fix_result': 'skipped',
+            'fix_attempted': False,
+            'verified': False,
+            'verify_message': _rl_msg,
+            'decision_log_id': None,
+        }
+        return result, 'manual', _rl_msg, False
+
     # --- 失败冷却/用户驳回/接受检查（状态机） ---
     failure_state = await _failure_status(db, project_id, diag_type)
     if has_fix and failure_state:
@@ -477,6 +514,12 @@ async def _finalize_decision(
             if failure_kind not in ('env', 'logic'):
                 failure_kind = _classify_failure(verify_message or fix_action or '')
             fix_details_dict['failure_kind'] = failure_kind
+
+        # 监督层审核报告：将 exec_state 中的 audit_report（VerifySupervisor 产出）
+        # 一并持久化到 fix_details，供前端「审核面板」展示（score/issues/红线标记）。
+        # audit_report 已由 _execute_and_verify 序列化为 JSON 安全的 dict（to_dict()）。
+        if exec_state.get('audit_report'):
+            fix_details_dict['audit_report'] = exec_state['audit_report']
 
         fix_details = _json.dumps(fix_details_dict, ensure_ascii=False)
 

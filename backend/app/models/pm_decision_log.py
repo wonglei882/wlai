@@ -69,7 +69,7 @@ class PMDecisionLog(Base):
         Returns:
             dict
         """
-        return {
+        summary = {
             'id': self.id,
             'project_id': self.project_id,
             'diag_type': self.diag_type,
@@ -81,3 +81,40 @@ class PMDecisionLog(Base):
             'verified': self.verified,
             'created_at': str(self.created_at or ''),
         }
+        # Phase 4.2 审核面板：补齐字段（向后兼容，仅追加）
+        summary['original_message'] = (self.original_message or '')[:200]
+        summary['decision_reason'] = self.decision_reason or ''
+        summary['verify_message'] = self.verify_message or ''
+        summary['fix_attempted'] = self.fix_attempted
+        summary['user_feedback'] = self.user_feedback
+        summary['feedback_note'] = self.feedback_note or ''
+        # 监督层审核摘要：从 fix_details 解析 audit_report（score/passed/红线命中）
+        # 缺失/解析失败 → 返回 None，由前端决定是否展示审核面板入口
+        summary['audit'] = self._extract_audit_summary()
+        return summary
+
+    def _extract_audit_summary(self) -> dict | None:
+        """从 fix_details JSON 中提取监督层审核摘要（尽力而为，不抛异常）。
+
+        返回:
+            {score, passed, has_red_line, issue_count} 或 None（无审核数据）
+        """
+        if not self.fix_details:
+            return None
+        try:
+            import json as _json
+
+            parsed = _json.loads(self.fix_details)
+            audit = parsed.get('audit_report')
+            if not isinstance(audit, dict) or not audit.get('score'):
+                return None
+            issues = audit.get('issues') or []
+            return {
+                'score': audit.get('score'),
+                'summary': audit.get('summary', ''),
+                'passed': bool(audit.get('passed', False)),
+                'has_red_line': any(bool(i.get('red_line_id')) for i in issues if isinstance(i, dict)),
+                'issue_count': len(issues),
+            }
+        except Exception:
+            return None

@@ -99,11 +99,24 @@ async def list_decisions(
 
 @router.get('/decisions/{decision_id}')
 async def get_decision(decision_id: str, db=Depends(get_db)):
-    """查看单条 PM Agent 决策详情。"""
+    """查看单条 PM Agent 决策详情（含监督层审核报告）。"""
     log = (await db.execute(select(PMDecisionLog).where(PMDecisionLog.id == decision_id))).scalar_one_or_none()
 
     if not log:
         raise HTTPException(status_code=404, detail='决策记录不存在')
+
+    # fix_details 解析为 dict（含 audit_report 审核报告），解析失败返回原始字符串
+    try:
+        import json as _json
+
+        fix_details = _json.loads(log.fix_details) if log.fix_details else None
+    except Exception:
+        fix_details = log.fix_details if log.fix_details else None
+
+    # 监督层审核报告提到顶层（前端审核面板直接消费）
+    audit_report = None
+    if isinstance(fix_details, dict):
+        audit_report = fix_details.get('audit_report')
 
     return {
         'id': log.id,
@@ -121,6 +134,11 @@ async def get_decision(decision_id: str, db=Depends(get_db)):
         'verified': log.verified,
         'verified_at': str(log.verified_at) if log.verified_at else None,
         'verify_message': log.verify_message,
+        'fix_details': fix_details,
+        'audit_report': audit_report,
+        'user_feedback': log.user_feedback,
+        'feedback_note': log.feedback_note or '',
+        'feedback_at': str(log.feedback_at) if log.feedback_at else None,
         'scan_round': log.scan_round,
         'created_at': str(log.created_at) if log.created_at else None,
     }
