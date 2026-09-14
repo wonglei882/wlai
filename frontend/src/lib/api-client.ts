@@ -213,6 +213,32 @@ export const api = {
       `api/pm-token-usage/trend?days=${days}${projectId ? `&project_id=${projectId}` : ""}`
     ),
 
+  // ---- PM 自进化 ----
+  getEvolutionOverview: (projectId?: string) =>
+    request<Record<string, unknown>>(
+      `api/pm/evolution${projectId ? `?project_id=${projectId}` : ""}`
+    ),
+
+  getEvolutionEvents: (limit = 50) =>
+    request<{ items: Record<string, unknown>[] }>(
+      `api/pm/evolution/events?limit=${limit}`
+    ),
+
+  getEvolutionRules: (projectId?: string, dimension?: string) =>
+    request<{ items: Record<string, unknown>[] }>(
+      `api/pm/evolution/rules${
+        projectId || dimension
+          ? `?${[projectId ? `project_id=${projectId}` : "", dimension ? `dimension=${dimension}` : ""].filter(Boolean).join("&")}`
+          : ""
+      }`
+    ),
+
+  triggerEvolution: () =>
+    request<Record<string, unknown>>("api/pm/evolution/trigger", { method: "POST" }),
+
+  resetProjectEvolution: (projectId: string) =>
+    request<Record<string, unknown>>(`api/pm/evolution/${projectId}/reset`, { method: "POST" }),
+
   // ---- 小说：章节 ----
   listChapters: (projectId: string) =>
     request<{ chapters: import("@/types").Chapter[]; total: number }>(

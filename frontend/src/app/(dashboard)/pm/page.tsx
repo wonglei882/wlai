@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/auth-store"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Shield, Pause, Play, Square, Activity, Coins, Heart, AlertTriangle, RefreshCw } from "lucide-react"
+import { Shield, Pause, Play, Square, Activity, Coins, Heart, AlertTriangle, RefreshCw, BrainCircuit } from "lucide-react"
 import Link from "next/link"
 import { Skeleton, SkeletonCard, SkeletonList } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
@@ -108,6 +108,11 @@ export default function PMPage() {
         </CardHeader>
         <CardContent>
           <div className="flex gap-3">
+            <Link href="/pm/evolution">
+              <Button variant="secondary" size="sm">
+                <BrainCircuit className="mr-1 h-4 w-4" />
+                鑷繘鍖栭潰鏉?              </Button>
+            </Link>
             <Button
               variant="outline"
               size="sm"

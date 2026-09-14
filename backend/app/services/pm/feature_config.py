@@ -7,6 +7,27 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 运行时参数覆盖缓存（自进化引擎写入，get_scanner_params 读取）
+# 结构: {dimension: {key: value}}
+_runtime_overrides: dict[str, dict[str, Any]] = {}
+
+
+def set_runtime_overrides(overrides: dict[str, dict[str, Any]]) -> None:
+    """设置运行时参数覆盖（自进化引擎每轮巡检后刷新）。"""
+    global _runtime_overrides
+    _runtime_overrides = {k: dict(v) for k, v in overrides.items() if v}
+
+
+def clear_runtime_overrides() -> None:
+    """清空运行时参数覆盖（重置/关闭自进化时调用）。"""
+    global _runtime_overrides
+    _runtime_overrides = {}
+
+
+def get_runtime_overrides() -> dict[str, dict[str, Any]]:
+    """读取当前运行时覆盖（供状态面板/调试）。"""
+    return {k: dict(v) for k, v in _runtime_overrides.items()}
+
 
 class PMFeatureConfig:
     """PM 功能配置管理器"""
@@ -164,22 +185,35 @@ class PMFeatureConfig:
         }
 
     def get_scanner_params(self, dimension: str) -> dict[str, Any]:
-        """获取扫描维度参数（声明式配置，支持运行时覆盖）。
+        """获取扫描维度参数（声明式配置 + 自进化运行时覆盖）。
 
         Args:
             dimension: 维度标识（如 'character_consistency'）
 
         Returns:
-            参数值字典（仅包含 default 值，未配置的维度返回空 dict）
+            参数值字典（未配置的维度返回空 dict）
         """
         params_config = self._config.get('scanner_params', {}).get(dimension, {})
         if not isinstance(params_config, dict):
             return {}
-        return {
-            key: spec.get('default')
-            for key, spec in params_config.items()
-            if isinstance(spec, dict)
-        }
+        overrides = _runtime_overrides.get(dimension, {})
+        result: dict[str, Any] = {}
+        for key, spec in params_config.items():
+            if not isinstance(spec, dict):
+                continue
+            value = spec.get('default')
+            if key in overrides:
+                value = overrides[key]
+            result[key] = value
+        return result
+
+    def get_scanner_param_spec(self, dimension: str, key: str) -> dict[str, Any]:
+        """获取单个扫描参数的完整 spec（default/min/max/description）。
+
+        自进化引擎据此约束运行时阈值边界。
+        """
+        spec = self._config.get('scanner_params', {}).get(dimension, {}).get(key, {})
+        return spec if isinstance(spec, dict) else {}
 
     def reload(self):
         """重新加载配置"""
@@ -207,5 +241,10 @@ def get_pm_feature_config(feature_path: str) -> dict[str, Any]:
 
 
 def get_scanner_params(dimension: str) -> dict[str, Any]:
-    """获取扫描维度参数"""
+    """获取扫描维度参数（含运行时覆盖）"""
     return pm_feature_config.get_scanner_params(dimension)
+
+
+def get_scanner_param_spec(dimension: str, key: str) -> dict[str, Any]:
+    """获取扫描参数 spec（default/min/max/description）"""
+    return pm_feature_config.get_scanner_param_spec(dimension, key)

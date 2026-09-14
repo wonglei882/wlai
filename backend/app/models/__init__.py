@@ -4,15 +4,25 @@
 顶层导入可用（run_pm_inspection.py、api/pm.py 依赖此行为），
 同时保证 Base.metadata 完整扫描全部表（create_all 建表依赖）。
 """
-from app.models.base import Base
-
 from app.models.analysis_task import AnalysisTask
-from app.models.character import Character
+from app.models.base import Base
 from app.models.chapter import Chapter
+from app.models.character import Character
+from app.models.comic import ComicPanel, VisualReference
+from app.models.comic_bible import (
+    ArtStyleCard,
+    CharacterCard,
+    ComicEpisode,
+    NegativePromptLibrary,
+    SettingBible,
+)
+from app.models.comic_review import ReviewCheckpoint
+from app.models.comic_shot import Shot, ShotAsset, Storyboard
+from app.models.content_segment import ContentSegment
 from app.models.foreshadow import Foreshadow
 from app.models.goal_stability_log import GoalStabilityLog
 from app.models.golden_finger import GoldenFinger
-from app.models.memory import StoryMemory, PlotAnalysis
+from app.models.memory import PlotAnalysis, StoryMemory
 from app.models.mistake_log import MistakeLog
 from app.models.narrative_structure import StructureNode
 from app.models.ooc_violation import OOCViolation
@@ -20,11 +30,13 @@ from app.models.outline import Outline
 from app.models.pm_action_log import PMActionLog
 from app.models.pm_autonomy_config import PMAutonomyConfig
 from app.models.pm_consistency_state import PMConsistencyState
+from app.models.pm_consistency_state_comic import PMConsistencyStateComic
 from app.models.pm_decision_log import PMDecisionLog
 from app.models.pm_diagnostic_log import PMDiagnosticLog
+from app.models.pm_evolution import PMEvolutionEvent, PMEvolutionState, PMExclusionRule
 from app.models.pm_fix_pattern import PMFixPattern
-from app.models.pm_guidance_feedback import PMGuidanceFeedback
 from app.models.pm_goal_tree import PMGoalTree
+from app.models.pm_guidance_feedback import PMGuidanceFeedback
 from app.models.pm_history_patterns import PMHistoryPattern
 from app.models.pm_leader_lock import PMLeaderLock
 from app.models.pm_session_state import PMSessionState
@@ -37,17 +49,9 @@ from app.models.relationship import CharacterRelationship
 from app.models.settings import Settings
 from app.models.skill import Skill
 from app.models.story_line import StoryLine
-from app.models.content_segment import ContentSegment
-from app.models.comic import ComicPanel, VisualReference
-from app.models.webhook import WebhookConfig
-from app.models.comic_bible import (
-    SettingBible, CharacterCard, ArtStyleCard,
-    NegativePromptLibrary, ComicEpisode,
-)
-from app.models.comic_shot import Storyboard, Shot, ShotAsset
-from app.models.comic_review import ReviewCheckpoint
 from app.models.task import AsyncTask
 from app.models.user import User
+from app.models.webhook import WebhookConfig
 
 __all__ = [
     'Base',
@@ -66,8 +70,12 @@ __all__ = [
     'PMActionLog',
     'PMAutonomyConfig',
     'PMConsistencyState',
+    'PMConsistencyStateComic',
     'PMDecisionLog',
     'PMDiagnosticLog',
+    'PMEvolutionState',
+    'PMExclusionRule',
+    'PMEvolutionEvent',
     'PMFixPattern',
     'PMGuidanceFeedback',
     'PMGoalTree',

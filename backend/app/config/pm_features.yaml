@@ -102,7 +102,7 @@ features:
       token_cost: "medium"
 
     self_evolution:
-      enabled: false
+      enabled: true
       description: "自进化（技能自生长）"
       trigger: "on_demand"
       token_cost: "very_high"

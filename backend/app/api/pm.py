@@ -189,6 +189,16 @@ async def feedback_decision(
         log.verify_message = '用户确认采纳'
 
     await db.commit()
+
+    # 自进化：用户驳回 → 学习排除规则（非阻塞，失败不影响反馈写入）
+    if feedback == 'rejected':
+        try:
+            from app.services.pm.pm_evolution import learn_from_rejection
+
+            await learn_from_rejection(db, log)
+        except Exception as learn_err:
+            logger.warning(f'[PM] 驳回学习失败（非阻塞）: {learn_err}')
+
     return {'status': 'ok', 'id': decision_id, 'feedback': feedback}
 
 
@@ -570,3 +580,56 @@ async def get_pm_dashboard(
             'emotion': emotion,
         },
     }
+
+# =============================================================================
+# 自进化 API（E5）— 阈值进化 / 排除规则 / 事件日志
+# =============================================================================
+
+
+@router.get('/evolution', summary='PM 自进化总览')
+async def get_evolution(
+    project_id: str | None = Query(None, description='按项目筛选'),
+    db=Depends(get_db),
+):
+    """返回自进化状态总览（各维度信号/运行时阈值/节流）。"""
+    from app.services.pm.pm_evolution import get_evolution_overview
+
+    return await get_evolution_overview(db, project_id)
+
+
+@router.get('/evolution/events', summary='PM 自进化事件日志')
+async def get_evolution_events(
+    limit: int = Query(50, ge=1, le=200),
+    db=Depends(get_db),
+):
+    from app.services.pm.pm_evolution import list_evolution_events
+
+    return {'items': await list_evolution_events(db, limit)}
+
+
+@router.get('/evolution/rules', summary='PM 排除规则列表')
+async def get_evolution_rules(
+    project_id: str | None = Query(None, description='按项目筛选'),
+    dimension: str | None = Query(None, description='按维度筛选'),
+    db=Depends(get_db),
+):
+    from app.services.pm.pm_evolution import list_exclusion_rules
+
+    return {'items': await list_exclusion_rules(db, project_id, dimension)}
+
+
+@router.post('/evolution/trigger', summary='手动触发一轮进化')
+async def trigger_evolution(db=Depends(get_db)):
+    """对所有有进化状态的项目立即执行一轮信号聚合与阈值进化。"""
+    from app.services.pm.pm_evolution import run_evolution_now
+
+    return await run_evolution_now(db)
+
+
+@router.post('/evolution/{project_id}/reset', summary='重置项目自进化状态')
+async def reset_evolution(project_id: str, db=Depends(get_db)):
+    """重置项目的进化状态/排除规则/事件，并清空运行时覆盖缓存。"""
+    from app.services.pm.pm_evolution import reset_project_evolution
+
+    deleted = await reset_project_evolution(db, project_id)
+    return {'status': 'ok', 'project_id': project_id, 'deleted_states': deleted}
