@@ -530,4 +530,115 @@ async def _fix_outline_drift(issue: dict[str, Any], project_id: str, user_id: st
         return f'大纲漂移修正建议异常: {e}'
 
 
-# P2: _fix_outline_drift 已重新启用（LLM 生成大纲修正建议，见上方实现）
+# =============================================================================
+# P0.2: 漫剧 3 维修复（场景/分镜/对话）— 建议型
+# 不直接改写用户创作正文，仅在目标分镜 ComicPanel.scene_metadata['pm_fix']
+# 写入修复建议标记，并返回建议字符串供 PMDecisionLog.fix_details 记录。
+# 签名统一为 _execute_fix 调用形式 (issue, project_id, user_id, db) -> str。
+# =============================================================================
+
+
+def _extract_panel_seqs(entities: list[str] | None) -> list[int]:
+    """从 entities 提取全部 panel: 全局序号（保持顺序，跳过非法值）。"""
+    if not entities:
+        return []
+    seqs = []
+    for e in entities:
+        if isinstance(e, str) and e.startswith('panel:'):
+            try:
+                seqs.append(int(e.split(':', 1)[1]))
+            except ValueError:
+                continue
+    return seqs
+
+
+async def _mark_panel_fix(
+    db,
+    project_id: str,
+    seq: int,
+    fix_type: str,
+    suggestion: str,
+) -> bool:
+    """在 ComicPanel.scene_metadata['pm_fix'] 写入建议标记。
+
+    返回是否写入成功（分镜不存在或 db 异常返回 False，不抛出）。
+    """
+    try:
+        from app.models.comic import ComicPanel
+
+        result = await db.execute(
+            select(ComicPanel)
+            .where(
+                ComicPanel.project_id == project_id,
+                ComicPanel.global_sequence == seq,
+            )
+            .limit(1)
+        )
+        panel = result.scalar_one_or_none()
+        if panel is None:
+            return False
+        meta = dict(panel.scene_metadata or {})
+        fixes = dict(meta.get('pm_fix') or {})
+        fixes[fix_type] = {'suggestion': suggestion}
+        meta['pm_fix'] = fixes
+        panel.scene_metadata = meta
+        await db.flush()
+        return True
+    except Exception as e:
+        logger.warning('[PM-Agent] 写入分镜修复标记失败（非阻断）: %s', e)
+        return False
+
+
+async def _fix_scene_discontinuity(issue: dict[str, Any], project_id: str, user_id: str, db) -> str:
+    """场景连续性修复建议 — 统一为前镜场景描述（建议型，不直接改写正文）。"""
+    conflict_type = issue.get('conflict_type', 'time')
+    scene_from = issue.get('scene_from', '')
+    scene_to = issue.get('scene_to', '')
+    page = issue.get('page', '?')
+    seqs = _extract_panel_seqs(issue.get('entities'))
+    if not seqs or not scene_from or not scene_to:
+        return '场景连续性修复跳过（缺少场景描述或分镜序号）'
+    target_seq = seqs[-1]  # 问题在后镜（当前描述异常一侧）
+    suggestion = (
+        f'建议将分镜 {target_seq} 的场景描述「{scene_to}」统一为前镜「{scene_from}」'
+        f'（第{page}页，{conflict_type}冲突）'
+    )
+    written = await _mark_panel_fix(db, project_id, target_seq, 'scene_discontinuity', suggestion)
+    tail = '，已写入分镜修复标记' if written else ''
+    return f'场景连续性修复建议已生成（分镜 {seqs[0]}→{seqs[-1]}）{tail}: {suggestion}'
+
+
+async def _fix_panel_transition(issue: dict[str, Any], project_id: str, user_id: str, db) -> str:
+    """分镜衔接修复建议 — 建议替换中间分镜 camera_angle 打破单调节奏（建议型）。"""
+    angle = issue.get('angle', '')
+    count = issue.get('count', 0)
+    seqs = _extract_panel_seqs(issue.get('entities'))
+    if not seqs:
+        return '分镜衔接修复跳过（缺少分镜序号）'
+    start, end = seqs[0], seqs[-1]
+    mid_seq = (start + end) // 2
+    suggestion = (
+        f'建议将分镜 {mid_seq} 的 camera_angle「{angle or "?"}」替换为其他景别，'
+        f'打破连续 {count} 个相同角度的单调节奏'
+    )
+    written = await _mark_panel_fix(db, project_id, mid_seq, 'panel_transition', suggestion)
+    tail = '，已写入分镜修复标记' if written else ''
+    return f'分镜衔接修复建议已生成（分镜 {start}~{end}）{tail}: {suggestion}'
+
+
+async def _fix_dialogue_inconsistency(issue: dict[str, Any], project_id: str, user_id: str, db) -> str:
+    """对话语气统一建议 — 角色语气风格跳变，建议统一为前镜风格（建议型）。"""
+    character = issue.get('character', '')
+    style_from = issue.get('style_from', '')
+    style_to = issue.get('style_to', '')
+    seqs = _extract_panel_seqs(issue.get('entities'))
+    if not seqs or not character:
+        return '对话语气修复跳过（缺少角色或分镜序号）'
+    target_seq = seqs[-1]
+    suggestion = (
+        f'建议将角色「{character}」在分镜 {target_seq} 的对话语气'
+        f'由「{style_to}」统一为「{style_from}」'
+    )
+    written = await _mark_panel_fix(db, project_id, target_seq, 'dialogue_inconsistency', suggestion)
+    tail = '，已写入分镜修复标记' if written else ''
+    return f'对话语气统一建议已生成（角色「{character}」）{tail}: {suggestion}'

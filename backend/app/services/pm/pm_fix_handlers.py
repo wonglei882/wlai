@@ -326,16 +326,20 @@ async def _execute_fix(
 
 
 # 修复执行函数已拆分到 pm_fix_executors.py（控制文件行数 < 800）
+# 含 P0.2 漫剧 3 维建议型修复（场景/分镜/对话）
 from app.services.pm.pm_fix_executors import (  # noqa: E402, F401
     _fix_character_location,
-    _fix_world_rule_drift,
+    _fix_conflict_weak,
+    _fix_dialogue_inconsistency,
+    _fix_emotion_flat,
     _fix_foreshadow_stale,
+    _fix_outline_drift,
+    _fix_panel_transition,
+    _fix_paragraph_format,
     _fix_quality_low,
     _fix_rhythm_monotone,
-    _fix_emotion_flat,
-    _fix_conflict_weak,
-    _fix_outline_drift,
-    _fix_paragraph_format,
+    _fix_scene_discontinuity,
+    _fix_world_rule_drift,
 )
 
 # 配合 outline_drift 从扫描注册表摘除，handler 一并清理避免空转）
@@ -708,10 +712,14 @@ async def _verify_quality_fix(issue: dict[str, Any], project_id: str, user_id: s
 # =============================================================================
 
 
-async def _fix_visual_inconsistency(db, issue, project_id, user_id, scan_round, decision_log=None):
+async def _fix_visual_inconsistency(issue, project_id, user_id, db) -> str:
     """视觉一致性问题自动重试 — 回退镜头状态 + 注入修正提示词。
 
     委托给 VisualRetryService 处理，本函数仅做桥接。
+
+    注意：签名必须与 _execute_fix 的统一调用形式
+    ``handler(issue, project_id, user_id, db) -> str`` 一致
+    （原实现签名错位，命中时必抛 TypeError，随 P0-2 一并修正）。
     """
     try:
         from app.services.comic.visual_retry import VisualRetryService
@@ -721,15 +729,14 @@ async def _fix_visual_inconsistency(db, issue, project_id, user_id, scan_round, 
 
         action = result.get('action', 'skip')
         if action == 'retry':
-            return True, f"视觉重试第{result.get('attempt', 0)}次 (shot={result.get('shot_id', '?')[:8]})"
-        elif action == 'escalate':
-            return False, f"超过重试上限，转人工审核 (shot={result.get('shot_id', '?')[:8]})"
-        else:
-            return False, f"跳过: {result.get('reason', '未知原因')}"
+            return f"视觉重试第{result.get('attempt', 0)}次 (shot={str(result.get('shot_id', '?'))[:8]})"
+        if action == 'escalate':
+            return f"超过重试上限，转人工审核 (shot={str(result.get('shot_id', '?'))[:8]})"
+        return f"跳过: {result.get('reason', '未知原因')}"
 
     except Exception as e:
         logger.warning('[VisualFix] 处理异常: %s', e)
-        return False, f'视觉重试异常: {e}'
+        return f'视觉重试异常: {e}'
 
 
 # =============================================================================
@@ -758,6 +765,10 @@ def _register_all_handlers():
         ('outline_drift', 'pm_agent_outline_drift', _fix_outline_drift, '大纲漂移修正建议'),
         # 视觉一致性自动重试（漫剧角色变脸/画风割裂）
         ('ca_visual_inconsistency', None, _fix_visual_inconsistency, '视觉一致性自动重试'),
+        # P0.2: 漫剧 3 维建议型修复（场景/分镜/对话）
+        ('ca_scene_discontinuity', None, _fix_scene_discontinuity, '场景连续性修复建议'),
+        ('ca_panel_transition', None, _fix_panel_transition, '分镜衔接修复建议'),
+        ('ca_dialogue_inconsistency', None, _fix_dialogue_inconsistency, '对话语气统一建议'),
     )
     for bare, prefixed, handler, desc in specs:
         _register_fix_handler(bare, handler, desc)
