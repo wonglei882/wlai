@@ -1,9 +1,12 @@
 """设置数据模型"""
 
-from sqlalchemy import Column, String, Text, Float, Integer, DateTime, Boolean, Index
-from sqlalchemy.sql import func
-from app.models.base import Base
 import uuid
+
+from sqlalchemy import Boolean, Column, DateTime, Float, Index, Integer, String, Text
+from sqlalchemy.sql import func
+
+from app.core.crypto import decrypt_api_key, encrypt_api_key
+from app.models.base import Base
 
 
 class Settings(Base):
@@ -14,7 +17,7 @@ class Settings(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(50), nullable=False, unique=True, index=True, comment='用户ID')
     api_provider = Column(String(50), default='openai', comment='API提供商')
-    api_key = Column(String(500), comment='API密钥')
+    _api_key = Column('api_key', String(500), comment='API密钥(加密存储)')
     api_base_url = Column(String(500), comment='自定义API地址')
     llm_model = Column(String(100), default='gpt-4', comment='模型名称')
     temperature = Column(Float, default=0.7, comment='温度参数')
@@ -23,7 +26,7 @@ class Settings(Base):
 
     # 封面图片生成配置
     cover_api_provider = Column(String(50), comment='封面图片API提供商')
-    cover_api_key = Column(String(500), comment='封面图片API密钥')
+    _cover_api_key = Column('cover_api_key', String(500), comment='封面图片API密钥(加密存储)')
     cover_api_base_url = Column(String(500), comment='封面图片自定义API地址')
     cover_image_model = Column(String(100), comment='封面图片模型名称')
     cover_enabled = Column(Boolean, default=False, server_default='0', nullable=False, comment='是否启用封面图片生成')
@@ -33,7 +36,7 @@ class Settings(Base):
     smtp_host = Column(String(255), comment='SMTP 主机')
     smtp_port = Column(Integer, default=465, server_default='465', nullable=False, comment='SMTP 端口')
     smtp_username = Column(String(255), comment='SMTP 用户名')
-    smtp_password = Column(String(500), comment='SMTP 密码或授权码')
+    _smtp_password = Column('smtp_password', String(500), comment='SMTP 密码或授权码(加密存储)')
     smtp_use_tls = Column(Boolean, default=False, server_default='0', nullable=False, comment='是否启用 TLS')
     smtp_use_ssl = Column(Boolean, default=True, server_default='1', nullable=False, comment='是否启用 SSL')
     smtp_from_email = Column(String(255), comment='发件人邮箱')
@@ -48,6 +51,34 @@ class Settings(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), comment='更新时间')
 
     __table_args__ = (Index('idx_user_id', 'user_id'),)
+
+    # ── 敏感字段透明加解密（property 层）──────────────────────────
+    # 数据库列名保持不变（无迁移）；property getter 兼容存量明文，setter 一律加密。
+    # FERNET_KEY 缺失时读写非空值会抛 RuntimeError（fail-closed-on-use）。
+
+    @property
+    def api_key(self) -> str | None:
+        return decrypt_api_key(self._api_key) if self._api_key else None
+
+    @api_key.setter
+    def api_key(self, value: str | None) -> None:
+        self._api_key = encrypt_api_key(value) if value else None
+
+    @property
+    def cover_api_key(self) -> str | None:
+        return decrypt_api_key(self._cover_api_key) if self._cover_api_key else None
+
+    @cover_api_key.setter
+    def cover_api_key(self, value: str | None) -> None:
+        self._cover_api_key = encrypt_api_key(value) if value else None
+
+    @property
+    def smtp_password(self) -> str | None:
+        return decrypt_api_key(self._smtp_password) if self._smtp_password else None
+
+    @smtp_password.setter
+    def smtp_password(self, value: str | None) -> None:
+        self._smtp_password = encrypt_api_key(value) if value else None
 
     def __repr__(self):
         return f'<Settings(id={self.id}, user_id={self.user_id}, api_provider={self.api_provider})>'

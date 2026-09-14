@@ -98,11 +98,16 @@ class Settings(BaseSettings):
     LOCAL_AUTH_PASSWORD: str | None = None  # 本地登录密码
     LOCAL_AUTH_DISPLAY_NAME: str = '本地用户'  # 本地用户显示名称
 
-    # 会话配置
+# 会话配置
     SESSION_EXPIRE_MINUTES: int = 120  # 会话过期时间（分钟），默认2小时
-    SESSION_REFRESH_THRESHOLD_MINUTES: int = 30  # 会话刷新阈值（分钟），剩余时间少于此值时可刷新
+    SESSION_REFRESH_THRESHOLD_MINUTES: int = 30  # 会话刷新阈值（分钟），剩余时间少于此值时会话自动刷新
     SESSION_SECRET_KEY: str | None = None  # 会话签名密钥，生产环境必须配置为高强度随机值
     SESSION_COOKIE_SECURE: bool | None = None  # 是否强制 Cookie Secure；None 时按 DEBUG 自动判断
+
+    # 敏感字段加密配置
+    # settings 表 api_key / cover_api_key / smtp_password 的 Fernet 密钥。
+    # 缺失时这些字段的读写会抛错（fail-closed-on-use）；启动时仅告警不阻断。
+    FERNET_KEY: str = ''
 
     # 系统 SMTP 默认配置（可被管理员系统设置覆盖）
     SMTP_PROVIDER: str = 'qq'

@@ -41,6 +41,13 @@ def _validate_production_settings():
         get_session_secret()
     except RuntimeError as e:
         raise RuntimeError(f'生产环境配置校验失败: {e}') from e
+    if not settings.FERNET_KEY:
+        logger.critical(
+            '⚠️ 安全警告：未配置 FERNET_KEY！settings 表的 api_key / cover_api_key / '
+            'smtp_password 无法加解密（读写这些字段会抛错）。'
+            '生成方式: python -c "from cryptography.fernet import Fernet; '
+            'print(Fernet.generate_key().decode())"，然后写入 .env 的 FERNET_KEY。'
+        )
     if settings.LOCAL_AUTH_ENABLED and not settings.LOCAL_AUTH_PASSWORD:
         warnings.warn(
             'LOCAL_AUTH_ENABLED=True 但 LOCAL_AUTH_PASSWORD 为空，本地登录无密码保护！',
