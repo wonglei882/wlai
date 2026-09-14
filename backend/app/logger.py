@@ -171,9 +171,6 @@ def _get_correlation_id() -> str:
     return _correlation_id_var.get('')
 
 
-_correlation_id_var_dup = True
-
-
 def set_correlation_id(cid: str):
     """设置当前上下文的 correlation_id（用于追踪一次生成的全链路）"""
     _correlation_id_var.set(cid)

@@ -24,7 +24,7 @@ class VoiceAdapter(GenerationAdapter):
     async def generate_voice(self, text: str, voice_id: str = '', params: dict[str, Any] | None = None) -> dict[str, Any]:
         """文字转语音。
 
-        TODO: 接入实际 TTS 服务
+        [Milestone] 接入实际 TTS 服务：剪映（开发中）/ ElevenLabs / GPT-SoVITS 时间表待定
         """
         p = params or {}
         logger.info('[配音] TTS: %s... (voice=%s)', text[:50], voice_id)

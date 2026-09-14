@@ -39,4 +39,4 @@ omit = ["tests/*", "migrations/*"]
 
 [tool.coverage.report]
 show_missing = true
-fail_under = 0  # 暂不设阈值，逐步提升
+fail_under = 20  # 2026-09-14 实测基线 26%（全量 322 用例），逐步提升

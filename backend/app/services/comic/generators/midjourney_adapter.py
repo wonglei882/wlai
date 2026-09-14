@@ -21,7 +21,7 @@ class MidjourneyAdapter(GenerationAdapter):
     async def generate_image(self, prompt: str, negative_prompt: str = '', params: dict[str, Any] | None = None) -> dict[str, Any]:
         """调用 Midjourney 生成图片。
 
-        TODO: 接入实际 API
+        [Milestone] 接入实际 API（需 MJ_API_KEY；Discord 中继 / 官方 API 两条路径时间表待定）
         """
         p = params or {}
         logger.info('[Midjourney] 生成图片: %s...', prompt[:80])

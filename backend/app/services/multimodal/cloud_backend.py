@@ -134,12 +134,12 @@ class CloudMultimodalBackend(BaseMultimodalBackend):
 
     async def _call_gemini_vision(self, images: list[str], prompt: str) -> str:
         """Gemini 视觉调用（桩实现，复用 OpenAI 格式兼容层）。"""
-        # TODO: 接入 Gemini 原生 API
+        # [Milestone] 待接入 Gemini 原生 API（Gemini 视觉 API 与 OpenAI 格式不同，需单独实现）
         logger.warning('[CloudMM] Gemini 视觉尚未实现，回退到 OpenAI')
         return await self._call_openai_vision(images, prompt)
 
     async def _call_anthropic_vision(self, images: list[str], prompt: str) -> str:
         """Anthropic 视觉调用（桩实现）。"""
-        # TODO: 接入 Anthropic 原生 API
+        # [Milestone] 待接入 Anthropic 原生 API（Claude vision 走 messages API，需单独实现）
         logger.warning('[CloudMM] Anthropic 视觉尚未实现，回退到 OpenAI')
         return await self._call_openai_vision(images, prompt)
