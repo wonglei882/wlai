@@ -226,6 +226,34 @@ worldview_conflict_markers:
     - 丹田
 
 # ============================================================================
+# 红线系统配置（参考 ToonFlow 短剧通用红线设计）
+# 命中红线的 issue 自动标记为 critical，决策层必须转人工，不允许自动修复。
+# 题材专属红线在领域知识包中定义（data/knowledge_packs/story_themes/*/red_lines.yaml），
+# 本段为全局通用红线（跨题材生效）。
+# ============================================================================
+red_lines:
+  enabled: true
+  rules:
+    - id: RL-001
+      name: "角色外貌跳变"
+      description: "同角色外貌描述在相邻章节间发生矛盾（如发色/瞳色/服饰突变且无解释）"
+      severity: critical
+      check_keywords: ["发色", "瞳色", "身高"]
+      note: "触发条件：角色卡存在且相邻章节外貌描述相似度 < 0.3"
+    - id: RL-002
+      name: "世界观规则冲突"
+      description: "正文引入与 world_rules 冲突的设定（如无魔法世界出现魔法）"
+      severity: critical
+      check_keywords: ["魔法", "穿越", "系统", "异世界"]
+      note: "复用 worldview_conflict_markers 配置检测"
+    - id: RL-003
+      name: "伏笔超期未回收"
+      description: "伏笔 planted 超过 30 章仍未 resolved"
+      severity: warning
+      check_keywords: []
+      note: "由 foreshadow_age 维度升级触发（age > 30）"
+
+# ============================================================================
 # 漫剧制片流水线配置（AI 漫剧制片 Agent）
 # ============================================================================
 comic_production:

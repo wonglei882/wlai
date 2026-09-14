@@ -184,6 +184,17 @@ class PMFeatureConfig:
             'visual_threshold': guardian.get('visual_threshold', 0.7),
         }
 
+    def get_red_lines_config(self) -> dict[str, Any]:
+        """获取红线系统配置（顶层 red_lines 段）。
+
+        该配置位于 YAML 顶层 red_lines 下（非 features 子树）。
+        缺失时返回安全默认值（红线引擎禁用，不改变现有行为）。
+        """
+        red_lines = self._config.get('red_lines')
+        if not isinstance(red_lines, dict):
+            return {'enabled': False, 'rules': []}
+        return red_lines
+
     def get_scanner_params(self, dimension: str) -> dict[str, Any]:
         """获取扫描维度参数（声明式配置 + 自进化运行时覆盖）。
 

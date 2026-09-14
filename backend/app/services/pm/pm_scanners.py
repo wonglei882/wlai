@@ -602,6 +602,101 @@ async def _scan_paragraph_format(db: AsyncSession, project_id: str, user_id: str
     return issues
 
 
+# =============================================================================
+# 红线检测维度（参考 ToonFlow 短剧通用红线设计）
+# 命中红线 → issue 携带 red_line_id 标记（severity=critical）
+# → 决策层 _decide_action / 监督层 VerifySupervisor 强制转人工，禁止自动修复
+# =============================================================================
+
+
+@scan_dimension(
+    'red_line_check',
+    'pm_agent_red_line_violation',
+    lambda i: f'[PM-Agent] 命中红线「{i.get("red_line_name", i.get("red_line_id", ""))}」: {i.get("message", "")}',
+)
+async def _scan_red_line(db: AsyncSession, project_id: str, user_id: str):
+    """红线检测 — 检查最新章节正文是否命中全局/题材红线。
+
+    检测逻辑：
+    1. 读取项目 genre → 加载适用的红线规则（全局 + 题材包）
+    2. 取最新章节正文做关键词检测（RedLineEngine.check_keywords）
+    3. RL-003 类阈值红线：伏笔超期（age > 30 章）由本维度升级标记
+
+    Returns:
+        issues 列表，命中项携带 red_line_id 标记
+    """
+    issues: list[dict[str, Any]] = []
+    try:
+        from app.services.pm.red_line import red_line_engine
+
+        # 1. 查询项目类型，加载适用红线
+        from app.models.project import Project
+
+        genre_result = await db.execute(select(Project.genre).where(Project.id == project_id))
+        genre = genre_result.scalar() or 'novel'
+        rules = red_line_engine.get_rules_for_genre(genre)
+        if not rules:
+            return issues
+
+        # 2. 取最新章节正文
+        chapter_result = await db.execute(
+            text("""
+                SELECT id, chapter_number, content FROM chapters
+                WHERE project_id = :pid AND content IS NOT NULL AND length(content) > 50
+                ORDER BY chapter_number DESC LIMIT 1
+            """),
+            {'pid': project_id},
+        )
+        row = chapter_result.fetchone()
+        if not row:
+            return issues
+        chapter_id, chapter_number, content = row[0], row[1], row[2] or ''
+
+        # 3. 关键词检测
+        hits = red_line_engine.check_keywords(rules, content)
+        for rule in hits:
+            issues.append(
+                red_line_engine.make_issue(
+                    rule,
+                    {'chapter_number': chapter_number, 'chapter_id': str(chapter_id)},
+                )
+            )
+
+        # 4. RL-003 阈值红线：伏笔超期（age > 30 章）升级标记
+        for rule in rules:
+            if rule.id == 'RL-003':
+                stale = await db.execute(
+                    text("""
+                        SELECT f.title, f.plant_chapter_number,
+                               COUNT(c.id) AS chapter_count
+                        FROM foreshadows f
+                        LEFT JOIN chapters c
+                          ON c.project_id = f.project_id AND c.chapter_number >= f.plant_chapter_number
+                        WHERE f.project_id = :pid AND f.status = 'planted'
+                        GROUP BY f.id
+                        HAVING COUNT(c.id) > 30
+                        LIMIT 5
+                    """),
+                    {'pid': project_id},
+                )
+                for frow in stale.fetchall():
+                    issues.append(
+                        red_line_engine.make_issue(
+                            rule,
+                            {
+                                'chapter_number': frow[1] or 0,
+                                'chapter_id': '',
+                            },
+                        )
+                    )
+                break
+
+    except Exception as e:
+        logger.warning(f'[PM-Agent] 红线检测扫描异常 project={project_id}: {e}')
+        await db.rollback()
+    return issues
+
+
 async def _write_diagnostic_from_scan(
     db: AsyncSession, project_id: str, user_id: str, issue_type: str, chapter_number: int, message: str, details: dict[str, Any]
 ):

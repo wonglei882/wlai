@@ -60,6 +60,8 @@ class TestScanRegistry:
         'outline_drift',
         'quality_score',
         'paragraph_format',
+        # 红线检测（Phase 2：命中红线强制转人工）
+        'red_line_check',
         # 漫剧维度（事后巡检适配）
         'visual_consistency',
         'scene_continuity',
