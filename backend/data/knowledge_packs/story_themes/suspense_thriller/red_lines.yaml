@@ -1,0 +1,39 @@
+# 悬疑惊悚题材红线
+
+# 命中红线的 issue 由决策层强制转人工，禁止自动修复
+
+red_lines:
+  - id: ST-R1
+    name: "空降线索反转"
+    description: "反转/真相依赖从未铺垫的关键线索（读者回看无处可寻，违反线索诚实原则）"
+    severity: critical
+    check_keywords: []
+    note: "函数检测：反转章节引用证据 → 回溯检查是否前文出现过；未出现即红线"
+
+  - id: ST-R2
+    name: "动机凭空反转"
+    description: "真凶动机纯为反转而设计，人性逻辑不成立（突兀到读者无法接受）"
+    severity: critical
+    check_keywords: ["原来凶手", "他就是", "真凶"]
+    note: "需人工判断动机链条是否成立"
+
+  - id: ST-R3
+    name: "信息差崩塌"
+    description: "角色突然知晓前文未铺垫的信息（信息表断裂），破坏悬疑公平性"
+    severity: critical
+    check_keywords: []
+    note: "函数检测：角色名+新情报 → 信息表比对"
+
+  - id: ST-R4
+    name: "技术细节硬伤"
+    description: "刑侦/法医/监控/电子侦查流程违背现实，且被用作关键推理支点"
+    severity: critical
+    check_keywords: []
+    note: "专业硬伤可能使整个推理线崩塌，转人工裁决"
+
+  - id: ST-W1
+    name: "收束期伏笔压线"
+    description: "大量伏笔集中在最后 5 章回收，造成仓促感"
+    severity: warning
+    check_keywords: []
+    note: "warning 级：建议前移回收节点"

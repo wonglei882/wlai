@@ -1,0 +1,29 @@
+# 仙侠奇幻题材修复策略
+
+# 题材专属修复策略（severity=warning 且非红线时采用）
+
+fix_strategies:
+  - id: XF-F1
+    applies_to: "境界倒退"
+    strategy: "回退检查境界描写与上一章的一致性；不一致时以最新大纲/境界设定为准修订，并在正文补充回溯解释段"
+    priority: high
+
+  - id: XF-F2
+    applies_to: "实力表现矛盾"
+    strategy: "调取角色战斗力档案，修正战斗结果描述使其符合设定；必要时缩短战斗篇幅并增加实力制约描写"
+    priority: high
+
+  - id: XF-F3
+    applies_to: "法宝规则冲突"
+    strategy: "对比前文法宝设定卡，统一规则后修正本文描述；若前后均为合理则补充限制条件说明"
+    priority: medium
+
+  - id: XF-F4
+    applies_to: "修炼时间线"
+    strategy: "对照章节时间线表，将闭关/历练时长修正到一致；无法对齐时以主线事件时间为准"
+    priority: medium
+
+  - id: XF-F5
+    applies_to: "突破节奏拖沓"
+    strategy: "超过 15 章无境界进展时，检查是否插入过多分支剧情；建议收束支线、加速机缘推进"
+    priority: low

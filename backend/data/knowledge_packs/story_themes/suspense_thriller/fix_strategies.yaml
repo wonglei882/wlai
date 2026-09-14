@@ -1,0 +1,27 @@
+# 悬疑惊悚题材修复策略
+
+fix_strategies:
+  - id: ST-F1
+    applies_to: "空降线索反转"
+    strategy: "在前文至少 2 处插入该线索的隐形铺垫（各 1-2 句），保持原文推理过程不变"
+    priority: high
+
+  - id: ST-F2
+    applies_to: "动机不成立"
+    strategy: "扩充凶手的动机描写（前文 1-2 处插入其心理铺垫），或调整动机链条中的人物关系设定"
+    priority: high
+
+  - id: ST-F3
+    applies_to: "信息差崩塌"
+    strategy: "插入信息获取场景（听闻/发现/间接证据），使角色知情有据可依"
+    priority: medium
+
+  - id: ST-F4
+    applies_to: "技术细节硬伤"
+    strategy: "修正为业界通用流程描述；若推理依赖该细节则同步调整推理表述"
+    priority: high
+
+  - id: ST-F5
+    applies_to: "收束期压线"
+    strategy: "将后 5 章的回收任务前移 2-3 章，拆分为阶段性揭示"
+    priority: low

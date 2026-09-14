@@ -84,8 +84,21 @@ async def _fix_world_rule_drift(issue: dict[str, Any], project_id: str, user_id:
 
                 ai_service = await get_pm_ai_client(user_id, db)
                 if ai_service is not None:
+                    # 题材知识包上下文（Phase 4.1：由 _execute_and_verify 注入 issue._knowledge_context）
+                    # 世界观规则合并需遵循题材红线，防止修复引入新冲突
+                    _kc = issue.get('_knowledge_context') or {}
+                    _theme_note = ''
+                    if _kc.get('theme_id'):
+                        _theme_note = f'\n\n【题材参考】当前为「{_kc.get("theme_id")}」题材。'
+                    if _kc.get('red_lines'):
+                        _red_txt = '；'.join(
+                            f'{r.get("id")}-{r.get("name")}' for r in _kc['red_lines'][:5] if r.get('id')
+                        )
+                        if _red_txt:
+                            _theme_note += f'\n题材红线（更新规则时禁止触发）：{_red_txt}。'
+
                     # P0 升级：让 LLM 分析章节中的新设定，并更新 world_rules 正文
-                    prompt = f"""你是小说世界观一致性专家。以下是当前世界观规则和第{current_ch}章片段。
+                    prompt = f"""你是小说世界观一致性专家。以下是当前世界观规则和第{current_ch}章片段。{_theme_note}
 
 【当前世界观规则】
 {world_rules}

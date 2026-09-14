@@ -1,0 +1,27 @@
+# 都市职场题材修复策略
+
+fix_strategies:
+  - id: UW-F1
+    applies_to: "行业常识错误"
+    strategy: "调取行业常识库，修正专业表述为业界通用说法；无法判定时保留原文并标记人工复核"
+    priority: high
+
+  - id: UW-F2
+    applies_to: "职级权力错乱"
+    strategy: "对照组织架构设定表，调整命令链条或补充授权背景；重大错乱建议重写该交互片段"
+    priority: high
+
+  - id: UW-F3
+    applies_to: "能力无来源"
+    strategy: "回查前 10 章是否漏铺垫；补写前置能力展示（0.5-1 章内插入）或降级该能力表现"
+    priority: medium
+
+  - id: UW-F4
+    applies_to: "商战逻辑低幼"
+    strategy: "给博弈手段补充现实动机链（利益/风险/替代方案），提升手段的可行性与下注感"
+    priority: medium
+
+  - id: UW-F5
+    applies_to: "时间线错乱"
+    strategy: "对照项目甘特图/事件时间线表，修正 deadline 与章节目期对齐"
+    priority: low

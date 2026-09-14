@@ -1,0 +1,39 @@
+# 仙侠奇幻题材红线
+
+# 命中红线的 issue 由决策层强制转人工，禁止自动修复
+
+red_lines:
+  - id: XF-R1
+    name: "境界倒退无解释"
+    description: "角色境界出现无逻辑倒退（如渡劫期→金丹期），且无渡劫失败/代价描写"
+    severity: critical
+    check_keywords: ["跌落至", "倒退到", "降为", "境界不稳"]
+    note: "除非前文有渡劫失败或散功代价铺垫"
+
+  - id: XF-R2
+    name: "实力跳变矛盾"
+    description: "同角色对同级别对手的实力表现前后矛盾（如打不过练气期的主角突然碾压金丹期）"
+    severity: critical
+    check_keywords: ["秒杀", "一招制敌", "轻松碾压"]
+    note: "需与角色战斗力设定一致"
+
+  - id: XF-R3
+    name: "法宝规则冲突"
+    description: "法宝/丹药的能力或限制前后矛盾（储物空间、飞剑速度、使用次数）"
+    severity: critical
+    check_keywords: []
+    note: "函数检测：对比前文法宝描述"
+
+  - id: XF-R4
+    name: "天地法则矛盾"
+    description: "正文引入与世界观天道规则冲突的设定（无灵根者修仙、凡人灭仙、灵气无限）"
+    severity: critical
+    check_keywords: ["无灵根", "凡人", "灵气枯竭"]
+    note: "破坏世界观根基，必须人工裁决"
+
+  - id: XF-W1
+    name: "修炼时间线混乱"
+    description: "闭关/历练时间与外部事件时间线冲突"
+    severity: warning
+    check_keywords: ["闭关", "数年", "百年"]
+    note: "如非核心矛盾可自动修复，矛盾重大则转人工"

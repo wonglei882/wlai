@@ -1,0 +1,32 @@
+# 都市职场题材红线
+
+# 命中红线的 issue 由决策层强制转人工，禁止自动修复
+
+red_lines:
+  - id: UW-R1
+    name: "行业常识硬伤"
+    description: "正文出现明显的行业事实错误（金融/法律/医疗/工程等专业逻辑不可能成立）"
+    severity: critical
+    check_keywords: []
+    note: "函数检测：专业术语组合 + 常识库比对，命中即转人工，AI 修复可能以错补错"
+
+  - id: UW-R2
+    name: "职级权力错乱"
+    description: "组织层级被无视到违背基本现实（实习生指挥高管/无权者越级决策且无后果）"
+    severity: critical
+    check_keywords: ["越级", "直接开除", "总裁"]
+    note: "除非前文有特殊授权/股权设定"
+
+  - id: UW-R3
+    name: "能力无来源"
+    description: "主角展示无前文铺垫的行业神技（空降能力，履历/项目/成长史均无法支撑）"
+    severity: critical
+    check_keywords: []
+    note: "需人工判断是否属于前期漏写铺垫"
+
+  - id: UW-W1
+    name: "商战逻辑低幼"
+    description: "博弈手段过于幼稚（与现实商业逻辑严重不符）而剧情将其奉为高明"
+    severity: warning
+    check_keywords: ["要挟", "威胁"]
+    note: "warning 级，可自动修复合理化处理"

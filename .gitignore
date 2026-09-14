@@ -7,6 +7,7 @@ __pycache__/
 backend/logs/
 backend/data/*
 !backend/data/knowledge_seed/
+!backend/data/knowledge_packs/
 backend/.instance_id
 
 # 环境配置（保留 .env.example 作为模板）
