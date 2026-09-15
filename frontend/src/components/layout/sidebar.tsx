@@ -19,7 +19,7 @@ import { useState } from "react"
 
 const navItems = [
   { href: "/projects", label: "项目", icon: LayoutDashboard },
-  { href: "/novel", label: "小说工作台", icon: BookOpen },
+  { href: "/novel", label: "剧本工作台", icon: BookOpen },
   { href: "/comic", label: "漫剧工作台", icon: Film },
   { href: "/pm", label: "PM Agent", icon: Shield },
   { href: "/token-usage", label: "用量统计", icon: BarChart3 },

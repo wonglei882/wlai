@@ -187,7 +187,7 @@ export default function NovelWorkspacePage({ params }: { params: Promise<{ id: s
                     <div className="text-center">
                       <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
                       <p>选择左侧章节开始编辑</p>
-                      <p className="text-[10px] mt-1">或创建新章节输入小说内容</p>
+                      <p className="text-[10px] mt-1">或创建新章节输入剧本内容</p>
                     </div>
                   </div>
                 )
@@ -205,13 +205,13 @@ export default function NovelWorkspacePage({ params }: { params: Promise<{ id: s
         {/* Right Panel — Properties */}
         <Panel defaultSize={25} minSize={15} maxSize={40} id="novel-right">
           <ToolWindow title="项目信息">
-            <NovelProjectInfo projectId={projectId} />
+            <ScriptProjectInfo projectId={projectId} />
           </ToolWindow>
         </Panel>
       </Group>
 
       {/* Status Bar */}
-      <NovelStatusBar projectId={projectId} />
+      <ScriptStatusBar projectId={projectId} />
     </div>
   )
 }
@@ -258,7 +258,7 @@ function CharacterPanel({ projectId }: { projectId: string }) {
 }
 
 // ---- Project Info Panel ----
-function NovelProjectInfo({ projectId }: { projectId: string }) {
+function ScriptProjectInfo({ projectId }: { projectId: string }) {
   const { data: project } = require("@tanstack/react-query").useQuery({
     queryKey: ["project", projectId],
     queryFn: () => api.getProject(projectId),
@@ -319,7 +319,7 @@ function NovelProjectInfo({ projectId }: { projectId: string }) {
 }
 
 // ---- Status Bar ----
-function NovelStatusBar({ projectId }: { projectId: string }) {
+function ScriptStatusBar({ projectId }: { projectId: string }) {
   const { data: chaptersData } = require("@tanstack/react-query").useQuery({
     queryKey: ["novel-chapters", projectId],
     queryFn: () => api.listChapters(projectId),
@@ -338,7 +338,7 @@ function NovelStatusBar({ projectId }: { projectId: string }) {
         总字数 <span className="text-[#A9B7C6]">{totalWords.toLocaleString()}</span>
       </span>
       <span className="text-[#515151]">|</span>
-      <span>小说转剧本工作台</span>
+      <span>剧本工作台</span>
       <span className="ml-auto text-[#A9B7C6]">WLai</span>
     </div>
   )

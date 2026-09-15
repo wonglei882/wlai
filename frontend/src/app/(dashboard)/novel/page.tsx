@@ -21,13 +21,13 @@ export default function NovelPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">小说工作台</h1>
-          <p className="text-muted-foreground">小说转剧本 — 编写章节，一键生成分镜</p>
+          <h1 className="text-3xl font-bold tracking-tight">剧本工作台</h1>
+          <p className="text-muted-foreground">剧本工作台 — 导入小说，PM 分析生成剧本</p>
         </div>
         <Link href="/projects">
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            新建小说项目
+            新建剧本项目
           </Button>
         </Link>
       </div>
@@ -76,7 +76,7 @@ export default function NovelPage() {
                 <Link href={`/projects/${project.id}/novel/workspace`}>
                   <Button size="sm" className="w-full mb-2">
                     <Monitor className="mr-1 h-3 w-3" />
-                    打开小说工作台
+                    打开剧本工作台
                   </Button>
                 </Link>
                 <div className="grid grid-cols-2 gap-2">

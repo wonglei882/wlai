@@ -134,16 +134,16 @@ export default function ProjectDetailPage({ params }: { params: Promise<{ id: st
           </>
         ) : (
           <>
-            {/* 小说工作台 - 主入口 */}
+            {/* 剧本工作台 - 主入口 */}
             <Link href={`/projects/${id}/novel/workspace`}>
               <Card className="cursor-pointer border-primary/30 hover:border-primary hover:shadow-md transition-all">
                 <CardHeader>
                   <div className="flex items-center gap-3">
                     <Monitor className="h-5 w-5 text-primary" />
-                    <CardTitle className="text-lg">小说工作台</CardTitle>
+                    <CardTitle className="text-lg">剧本工作台</CardTitle>
                     <Badge variant="outline" className="text-xs ml-auto">推荐</Badge>
                   </div>
-                  <CardDescription>章节编辑 + 一键转分镜：编写小说内容，自动生成分镜表，推送到漫剧流水线</CardDescription>
+                  <CardDescription>导入小说 → PM 分析 → 生成剧本：导入小说内容，PM 自动分析生成结构化剧本</CardDescription>
                 </CardHeader>
               </Card>
             </Link>

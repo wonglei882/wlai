@@ -2,7 +2,11 @@
 
 import { toast } from "@/store/toast-store"
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+// 请求通过 Next.js 代理转发到后端
+// 使用绝对路径（以 / 开头），确保在任意子页面下都能正确解析
+// 例如页面在 /projects/xxx/comic/ 时，"/api/projects" 会解析成 /projects/xxx/comic/api/projects（错误）
+// 而 "/api/projects" 始终解析为 /api/projects（正确）
+const API_BASE = ""
 
 class ApiError extends Error {
   status: number
@@ -69,13 +73,13 @@ async function request<T>(
 export const api = {
   // ---- 认证 ----
   login: (username: string, password: string) =>
-    request<{ access_token: string; must_change_password?: boolean }>("api/auth/login", {
+    request<{ access_token: string; must_change_password?: boolean }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
 
   register: (username: string, password: string, displayName?: string) =>
-    request<{ access_token: string; must_change_password?: boolean }>("api/auth/register", {
+    request<{ access_token: string; must_change_password?: boolean }>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify({
         username,
@@ -84,154 +88,154 @@ export const api = {
       }),
     }),
 
-  me: () => request<{ id: string; username: string; display_name: string; role: string; must_change_password?: boolean }>("api/auth/me"),
+  me: () => request<{ id: string; username: string; display_name: string; role: string; must_change_password?: boolean }>("/api/auth/me"),
 
   changePassword: (oldPassword: string, newPassword: string) =>
-    request<{ access_token: string }>("api/auth/change-password", {
+    request<{ access_token: string }>("/api/auth/change-password", {
       method: "POST",
       body: JSON.stringify({ old_password: oldPassword, new_password: newPassword }),
     }),
 
   // ---- 项目 ----
   getProjects: () =>
-    request<{ projects: import("@/types").Project[] }>("api/projects"),
+    request<{ projects: import("@/types").Project[] }>("/api/projects"),
 
   getProject: (id: string) =>
-    request<import("@/types").Project>(`api/projects/${id}`),
+    request<import("@/types").Project>(`/api/projects/${id}`),
 
   createProject: (data: import("@/types").CreateProjectRequest) =>
-    request<import("@/types").Project>("api/projects", {
+    request<import("@/types").Project>("/api/projects", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   updateProject: (id: string, data: Partial<import("@/types").CreateProjectRequest>) =>
-    request<import("@/types").Project>(`api/projects/${id}`, {
+    request<import("@/types").Project>(`/api/projects/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
 
   deleteProject: (id: string) =>
-    request<void>(`api/projects/${id}`, { method: "DELETE" }),
+    request<void>(`/api/projects/${id}`, { method: "DELETE" }),
 
   // ---- PM Agent 控制 ----
   getPMStatus: () =>
-    request<import("@/types").PMControlStatus>("api/pm-control/status"),
+    request<import("@/types").PMControlStatus>("/api/pm-control/status"),
 
   pmKill: () =>
-    request<import("@/types").PMControlStatus>("api/pm-control/kill", { method: "POST" }),
+    request<import("@/types").PMControlStatus>("/api/pm-control/kill", { method: "POST" }),
 
   pmPause: () =>
-    request<import("@/types").PMControlStatus>("api/pm-control/pause", { method: "POST" }),
+    request<import("@/types").PMControlStatus>("/api/pm-control/pause", { method: "POST" }),
 
   pmResume: () =>
-    request<import("@/types").PMControlStatus>("api/pm-control/resume", { method: "POST" }),
+    request<import("@/types").PMControlStatus>("/api/pm-control/resume", { method: "POST" }),
 
   // ---- PM 诊断面板 ----
   getPMDashboard: (projectId: string, userId: string) =>
     request<Record<string, unknown>>(
-      `api/pm/dashboard/${projectId}?user_id=${userId}`
+      `/api/pm/dashboard/${projectId}?user_id=${userId}`
     ),
 
   getDiagnosticSummary: (projectId: string) =>
     request<Record<string, unknown>>(
-      `api/pm-diagnostic-logs/summary?project_id=${projectId}`
+      `/api/pm-diagnostic-logs/summary?project_id=${projectId}`
     ),
 
   getDiagnosticLogs: (projectId: string, limit = 20) =>
     request<{ total: number; items: import("@/types").DiagnosticLog[] }>(
-      `api/pm-diagnostic-logs?project_id=${projectId}&limit=${limit}`
+      `/api/pm-diagnostic-logs?project_id=${projectId}&limit=${limit}`
     ),
 
   getFixReport: (projectId: string, hours = 2) =>
     request<{ total: number; items: Record<string, unknown>[] }>(
-      `api/pm-diagnostic-logs/report?project_id=${projectId}&hours=${hours}`
+      `/api/pm-diagnostic-logs/report?project_id=${projectId}&hours=${hours}`
     ),
 
   submitFixFeedback: (logId: string, action: string, note?: string) =>
-    request<{ ok: boolean }>(`api/pm-diagnostic-logs/${logId}/feedback`, {
+    request<{ ok: boolean }>(`/api/pm-diagnostic-logs/${logId}/feedback`, {
       method: "POST",
       body: JSON.stringify({ action, note: note || "" }),
     }),
 
   resolveDiagnostic: (logId: string) =>
-    request<{ ok: boolean }>(`api/pm-diagnostic-logs/${logId}/resolve`, {
+    request<{ ok: boolean }>(`/api/pm-diagnostic-logs/${logId}/resolve`, {
       method: "POST",
     }),
 
   // ---- PM 决策 ----
   getDecisions: (projectId: string, limit = 50) =>
     request<{ decisions: import("@/types").PMDecision[] }>(
-      `api/pm/decisions?project_id=${projectId}&limit=${limit}`
+      `/api/pm/decisions?project_id=${projectId}&limit=${limit}`
     ),
 
   getDecisionDetail: (decisionId: string) =>
     request<import("@/types").PMDecisionDetail>(
-      `api/pm/decisions/${decisionId}`
+      `/api/pm/decisions/${decisionId}`
     ),
 
   submitDecisionFeedback: (decisionId: string, feedback: string, comment?: string) =>
     request<Record<string, unknown>>(
-      `api/pm/decisions/${decisionId}/feedback?feedback=${feedback}&comment=${encodeURIComponent(comment || "")}`,
+      `/api/pm/decisions/${decisionId}/feedback?feedback=${feedback}&comment=${encodeURIComponent(comment || "")}`,
       { method: "POST" }
     ),
 
   // ---- PM 自主度 ----
   getAutonomyConfig: (projectId: string, userId: string) =>
     request<Record<string, unknown>>(
-      `api/pm/autonomy/${projectId}?user_id=${userId}`
+      `/api/pm/autonomy/${projectId}?user_id=${userId}`
     ),
 
   setAutonomyConfig: (projectId: string, userId: string, level: string, threshold: number, types?: string) =>
     request<Record<string, unknown>>(
-      `api/pm/autonomy/${projectId}?user_id=${userId}&level=${level}&confidence_threshold=${threshold}&auto_execute_types=${types || "outline,suggest,foreshadow,character,world_setting"}`,
+      `/api/pm/autonomy/${projectId}?user_id=${userId}&level=${level}&confidence_threshold=${threshold}&auto_execute_types=${types || "outline,suggest,foreshadow,character,world_setting"}`,
       { method: "POST" }
     ),
 
   // ---- PM 巡检 ----
   inspectProject: (projectId: string, userId: string) =>
     request<Record<string, unknown>>(
-      `api/pm/inspect/${projectId}?user_id=${userId}`
+      `/api/pm/inspect/${projectId}?user_id=${userId}`
     ),
 
   triggerRerun: () =>
-    request<Record<string, unknown>>("api/pm/rerun", { method: "POST" }),
+    request<Record<string, unknown>>("/api/pm/rerun", { method: "POST" }),
 
   getSuggestions: (projectId: string, userId: string) =>
     request<{ suggestions: Record<string, unknown>[]; total: number }>(
-      `api/pm/suggestions/${projectId}?user_id=${userId}`
+      `/api/pm/suggestions/${projectId}?user_id=${userId}`
     ),
 
   getProactiveReport: (projectId: string, userId: string) =>
     request<Record<string, unknown>>(
-      `api/pm/proactive-report/${projectId}?user_id=${userId}`
+      `/api/pm/proactive-report/${projectId}?user_id=${userId}`
     ),
 
   // ---- PM Token 用量 ----
   getTokenSummary: (days = 7, projectId?: string) =>
     request<Record<string, unknown>>(
-      `api/pm-token-usage/summary?days=${days}${projectId ? `&project_id=${projectId}` : ""}`
+      `/api/pm-token-usage/summary?days=${days}${projectId ? `&project_id=${projectId}` : ""}`
     ),
 
   getTokenTrend: (days = 7, projectId?: string) =>
     request<Record<string, unknown>>(
-      `api/pm-token-usage/trend?days=${days}${projectId ? `&project_id=${projectId}` : ""}`
+      `/api/pm-token-usage/trend?days=${days}${projectId ? `&project_id=${projectId}` : ""}`
     ),
 
   // ---- PM 自进化 ----
   getEvolutionOverview: (projectId?: string) =>
     request<Record<string, unknown>>(
-      `api/pm/evolution${projectId ? `?project_id=${projectId}` : ""}`
+      `/api/pm/evolution${projectId ? `?project_id=${projectId}` : ""}`
     ),
 
   getEvolutionEvents: (limit = 50) =>
     request<{ items: Record<string, unknown>[] }>(
-      `api/pm/evolution/events?limit=${limit}`
+      `/api/pm/evolution/events?limit=${limit}`
     ),
 
   getEvolutionRules: (projectId?: string, dimension?: string) =>
     request<{ items: Record<string, unknown>[] }>(
-      `api/pm/evolution/rules${
+      `/api/pm/evolution/rules${
         projectId || dimension
           ? `?${[projectId ? `project_id=${projectId}` : "", dimension ? `dimension=${dimension}` : ""].filter(Boolean).join("&")}`
           : ""
@@ -239,181 +243,181 @@ export const api = {
     ),
 
   triggerEvolution: () =>
-    request<Record<string, unknown>>("api/pm/evolution/trigger", { method: "POST" }),
+    request<Record<string, unknown>>("/api/pm/evolution/trigger", { method: "POST" }),
 
   resetProjectEvolution: (projectId: string) =>
-    request<Record<string, unknown>>(`api/pm/evolution/${projectId}/reset`, { method: "POST" }),
+    request<Record<string, unknown>>(`/api/pm/evolution/${projectId}/reset`, { method: "POST" }),
 
   // ---- 小说：章节 ----
   listChapters: (projectId: string) =>
     request<{ chapters: import("@/types").Chapter[]; total: number }>(
-      `api/v1/novel/chapters?project_id=${projectId}`
+      `/api/v1/novel/chapters?project_id=${projectId}`
     ),
 
   createChapter: (data: { project_id: string; chapter_number: number; title: string; content?: string }) =>
-    request<import("@/types").Chapter>("api/v1/novel/chapters", {
+    request<import("@/types").Chapter>("/api/v1/novel/chapters", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   getChapter: (chapterId: string) =>
-    request<import("@/types").Chapter>(`api/v1/novel/chapters/${chapterId}`),
+    request<import("@/types").Chapter>(`/api/v1/novel/chapters/${chapterId}`),
 
   updateChapter: (chapterId: string, data: { title?: string; content?: string; summary?: string }) =>
-    request<import("@/types").Chapter>(`api/v1/novel/chapters/${chapterId}`, {
+    request<import("@/types").Chapter>(`/api/v1/novel/chapters/${chapterId}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
 
   deleteChapter: (chapterId: string) =>
-    request<{ ok: boolean }>(`api/v1/novel/chapters/${chapterId}`, {
+    request<{ ok: boolean }>(`/api/v1/novel/chapters/${chapterId}`, {
       method: "DELETE",
     }),
 
   // ---- 漫剧：设定圣经 ----
   createBible: (data: Record<string, unknown>) =>
-    request<Record<string, unknown>>("api/v1/comic/bibles", {
+    request<Record<string, unknown>>("/api/v1/comic/bibles", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   getBible: (bibleId: string) =>
-    request<Record<string, unknown>>(`api/v1/comic/bibles/${bibleId}`),
+    request<Record<string, unknown>>(`/api/v1/comic/bibles/${bibleId}`),
 
   updateBible: (bibleId: string, data: Record<string, unknown>) =>
-    request<Record<string, unknown>>(`api/v1/comic/bibles/${bibleId}`, {
+    request<Record<string, unknown>>(`/api/v1/comic/bibles/${bibleId}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
 
   // ---- 漫剧：角色卡 ----
   createCharacter: (data: Record<string, unknown>) =>
-    request<Record<string, unknown>>("api/v1/comic/characters", {
+    request<Record<string, unknown>>("/api/v1/comic/characters", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   listCharacters: (projectId: string) =>
     request<{ characters: import("@/types").CharacterCard[]; total: number }>(
-      `api/v1/comic/characters?project_id=${projectId}`
+      `/api/v1/comic/characters?project_id=${projectId}`
     ),
 
   updateCharacter: (charId: string, data: Record<string, unknown>) =>
-    request<Record<string, unknown>>(`api/v1/comic/characters/${charId}`, {
+    request<Record<string, unknown>>(`/api/v1/comic/characters/${charId}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
 
   lockCharacter: (charId: string) =>
-    request<Record<string, unknown>>(`api/v1/comic/characters/${charId}/lock`, {
+    request<Record<string, unknown>>(`/api/v1/comic/characters/${charId}/lock`, {
       method: "POST",
     }),
 
   // ---- 漫剧：画风卡 ----
   createStyle: (data: Record<string, unknown>) =>
-    request<Record<string, unknown>>("api/v1/comic/styles", {
+    request<Record<string, unknown>>("/api/v1/comic/styles", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   getStyle: (projectId: string) =>
-    request<Record<string, unknown>>(`api/v1/comic/styles/${projectId}`),
+    request<Record<string, unknown>>(`/api/v1/comic/styles/${projectId}`),
 
   // ---- 漫剧：负面词库 ----
   saveNegativePrompts: (projectId: string, category: string, prompts: string[]) =>
-    request<Record<string, unknown>>("api/v1/comic/negative-prompts", {
+    request<Record<string, unknown>>("/api/v1/comic/negative-prompts", {
       method: "POST",
       body: JSON.stringify({ project_id: projectId, category, prompts }),
     }),
 
   getNegativePrompts: (projectId: string) =>
     request<{ libraries: import("@/types").NegativePromptLibrary[]; total: number }>(
-      `api/v1/comic/negative-prompts/${projectId}`
+      `/api/v1/comic/negative-prompts/${projectId}`
     ),
 
   // ---- 漫剧：集数 ----
   createEpisode: (data: Record<string, unknown>) =>
-    request<Record<string, unknown>>("api/v1/comic/episodes", {
+    request<Record<string, unknown>>("/api/v1/comic/episodes", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   listEpisodes: (projectId: string) =>
     request<{ episodes: import("@/types").ComicEpisode[]; total: number }>(
-      `api/v1/comic/episodes?project_id=${projectId}`
+      `/api/v1/comic/episodes?project_id=${projectId}`
     ),
 
   updateEpisode: (episodeId: string, data: Record<string, unknown>) =>
-    request<Record<string, unknown>>(`api/v1/comic/episodes/${episodeId}`, {
+    request<Record<string, unknown>>(`/api/v1/comic/episodes/${episodeId}`, {
       method: "PUT",
       body: JSON.stringify(data),
     }),
 
   // ---- 漫剧：分镜 ----
   generateStoryboard: (data: Record<string, unknown>) =>
-    request<Record<string, unknown>>("api/v1/comic/storyboards/generate", {
+    request<Record<string, unknown>>("/api/v1/comic/storyboards/generate", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   getStoryboard: (storyboardId: string) =>
-    request<Record<string, unknown>>(`api/v1/comic/storyboards/${storyboardId}`),
+    request<Record<string, unknown>>(`/api/v1/comic/storyboards/${storyboardId}`),
 
   confirmStoryboard: (storyboardId: string) =>
-    request<Record<string, unknown>>(`api/v1/comic/storyboards/${storyboardId}/confirm`, {
+    request<Record<string, unknown>>(`/api/v1/comic/storyboards/${storyboardId}/confirm`, {
       method: "POST",
     }),
 
   // ---- 漫剧：镜头 ----
   getShotsByProject: (projectId: string) =>
     request<{ shots: Record<string, unknown>[]; total: number }>(
-      `api/v1/comic/shots?project_id=${projectId}`
+      `/api/v1/comic/shots?project_id=${projectId}`
     ),
 
   getShotsByStoryboard: (storyboardId: string) =>
     request<{ shots: Record<string, unknown>[]; total: number }>(
-      `api/v1/comic/shots?storyboard_id=${storyboardId}`
+      `/api/v1/comic/shots?storyboard_id=${storyboardId}`
     ),
 
   updateShotStatus: (shotId: string, targetStatus: string) =>
-    request<Record<string, unknown>>(`api/v1/comic/shots/${shotId}/status`, {
+    request<Record<string, unknown>>(`/api/v1/comic/shots/${shotId}/status`, {
       method: "PUT",
       body: JSON.stringify({ target_status: targetStatus }),
     }),
 
   compileShotPrompt: (shotId: string, platform = "midjourney") =>
-    request<Record<string, unknown>>(`api/v1/comic/shots/${shotId}/compile`, {
+    request<Record<string, unknown>>(`/api/v1/comic/shots/${shotId}/compile`, {
       method: "POST",
       body: JSON.stringify({ platform }),
     }),
 
   // ---- 漫剧：素材 ----
   createAsset: (data: Record<string, unknown>) =>
-    request<Record<string, unknown>>("api/v1/comic/assets", {
+    request<Record<string, unknown>>("/api/v1/comic/assets", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   listAssets: (shotId: string) =>
     request<{ assets: Record<string, unknown>[]; total: number }>(
-      `api/v1/comic/assets?shot_id=${shotId}`
+      `/api/v1/comic/assets?shot_id=${shotId}`
     ),
 
   // ---- 漫剧：审核 ----
   getReviews: (projectId: string, status = "pending") =>
     request<{ reviews: Record<string, unknown>[]; total: number }>(
-      `api/v1/comic/reviews?project_id=${projectId}&status=${status}`
+      `/api/v1/comic/reviews?project_id=${projectId}&status=${status}`
     ),
 
   updateReview: (reviewId: string, status: string, notes?: string) =>
-    request<Record<string, unknown>>(`api/v1/comic/reviews/${reviewId}`, {
+    request<Record<string, unknown>>(`/api/v1/comic/reviews/${reviewId}`, {
       method: "PUT",
       body: JSON.stringify({ status, reviewer_notes: notes || "" }),
     }),
 
   // ---- 健康检查 ----
-  health: () => request<import("@/types").HealthStatus>("health"),
-  healthReady: () => request<import("@/types").HealthStatus>("health/ready"),
+  health: () => request<import("@/types").HealthStatus>("/health"),
+  healthReady: () => request<import("@/types").HealthStatus>("/health/ready"),
 }
 
 export { ApiError }
