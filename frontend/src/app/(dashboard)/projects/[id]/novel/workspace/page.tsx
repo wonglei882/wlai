@@ -9,9 +9,10 @@ import { NovelChapterPanel } from "@/components/workspace/novel-chapter-panel"
 import { ChapterEditor } from "@/components/workspace/chapter-editor"
 import { StoryboardPreview } from "@/components/workspace/storyboard-preview"
 import { ToolWindow } from "@/components/workspace/tool-window"
+import { AssetLibraryPanel } from "@/components/workspace/asset-library-panel"
 import { cn } from "@/lib/utils"
 import {
-  BookOpen, Clapperboard, FileText,
+  BookOpen, Clapperboard, FileText, Image as ImageIcon,
 } from "lucide-react"
 
 type CenterView = "editor" | "storyboard"
@@ -23,7 +24,7 @@ export default function NovelWorkspacePage({ params }: { params: Promise<{ id: s
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const [centerView, setCenterView] = useState<CenterView>("editor")
   const [storyboardId, setStoryboardId] = useState<string | null>(null)
-  const [leftTab, setLeftTab] = useState<"chapters" | "characters">("chapters")
+  const [leftTab, setLeftTab] = useState<"chapters" | "characters" | "assets">("chapters")
 
   // 布局持久化：恢复
   useEffect(() => {
@@ -119,6 +120,18 @@ export default function NovelWorkspacePage({ params }: { params: Promise<{ id: s
                 <BookOpen className="h-3 w-3" />
                 角色
               </button>
+              <button
+                onClick={() => setLeftTab("assets")}
+                className={cn(
+                  "h-full flex items-center gap-1 px-3 text-[11px] font-medium border-b-2 transition-colors",
+                  leftTab === "assets"
+                    ? "border-[#4B6EAF] text-[#A9B7C6]"
+                    : "border-transparent text-[#6A7579] hover:text-[#A9B7C6]"
+                )}
+              >
+                <ImageIcon className="h-3 w-3" />
+                资产库
+              </button>
             </div>
             {/* Left content */}
             <div className="flex-1 overflow-hidden">
@@ -129,14 +142,16 @@ export default function NovelWorkspacePage({ params }: { params: Promise<{ id: s
                   onSelectChapter={handleSelectChapter}
                   onConvertToStoryboard={handleQuickConvert}
                 />
-              ) : (
+              ) : leftTab === "characters" ? (
                 <CharacterPanel projectId={projectId} />
+              ) : (
+                <AssetLibraryPanel projectId={projectId} />
               )}
             </div>
           </div>
         </Panel>
 
-        <Separator className="w-1 bg-[#515151] data-[separator=true]:bg-[#4B6EAF]" />
+        <Separator className="w-1 cursor-col-resize bg-[#515151] hover:bg-[#4B6EAF] data-[separator=active]:bg-[#4B6EAF]" />
 
         {/* Center Editor */}
         <Panel defaultSize={55} minSize={30} id="novel-center">

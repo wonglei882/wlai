@@ -23,8 +23,13 @@ async function request<T>(
 ): Promise<T> {
   const url = `${API_BASE}${path}`
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
+  }
+
+  // FormData 由浏览器自动设置 Content-Type（含 boundary），不能覆盖为 JSON
+  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData
+  if (!isForm && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json"
   }
 
   // 附加 JWT token（认证）
@@ -414,6 +419,70 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ status, reviewer_notes: notes || "" }),
     }),
+
+  // ---- VisGuard：能力发现 ----
+  getVisGuardCapabilities: () =>
+    request<{ enabled: boolean; capabilities: Record<string, unknown>; defaults: Record<string, unknown> }>(
+      "/api/v1/visguard/capabilities"
+    ),
+
+  // ---- VisGuard：角色资产库 ----
+  getVisGuardCharacters: (projectId: string) =>
+    request<{ project_id: string; characters: Record<string, unknown>[] }>(
+      `/api/v1/visguard/characters?project_id=${encodeURIComponent(projectId)}`
+    ),
+
+  registerVisGuardCharacter: (
+    projectId: string,
+    name: string,
+    image: File,
+    description?: string
+  ) => {
+    const form = new FormData()
+    form.append("project_id", projectId)
+    form.append("name", name)
+    form.append("image", image)
+    if (description) form.append("description", description)
+    return request<{ project_id: string; character: Record<string, unknown> }>(
+      "/api/v1/visguard/characters",
+      { method: "POST", body: form }
+    )
+  },
+
+  deleteVisGuardCharacter: (characterId: string, projectId: string) =>
+    request<{ deleted: boolean; character_id: string }>(
+      `/api/v1/visguard/characters/${encodeURIComponent(characterId)}?project_id=${encodeURIComponent(projectId)}`,
+      { method: "DELETE" }
+    ),
+
+  addVisGuardCharacterImage: (characterId: string, projectId: string, image: File) => {
+    const form = new FormData()
+    form.append("project_id", projectId)
+    form.append("image", image)
+    return request<{ project_id: string; character_id: string; image_id: string }>(
+      `/api/v1/visguard/characters/${encodeURIComponent(characterId)}/images`,
+      { method: "POST", body: form }
+    )
+  },
+
+  getVisGuardCharacterImages: (characterId: string, projectId: string) =>
+    request<{ project_id: string; character_id: string; image_ids: string[] }>(
+      `/api/v1/visguard/characters/${encodeURIComponent(characterId)}/images?project_id=${encodeURIComponent(projectId)}`
+    ),
+
+  getVisGuardImageUrl: (characterId: string, imageId: string, projectId: string) =>
+    `/api/v1/visguard/characters/${encodeURIComponent(characterId)}/images/${encodeURIComponent(imageId)}/file?project_id=${encodeURIComponent(projectId)}`,
+
+  checkVisGuardSimilarity: (projectId: string, image: File, topK = 5) => {
+    const form = new FormData()
+    form.append("project_id", projectId)
+    form.append("image", image)
+    form.append("top_k", String(topK))
+    return request<{ project_id: string; query_hash: string; results: Record<string, unknown>[] }>(
+      "/api/v1/visguard/similarity",
+      { method: "POST", body: form }
+    )
+  },
 
   // ---- 健康检查 ----
   health: () => request<import("@/types").HealthStatus>("/health"),
