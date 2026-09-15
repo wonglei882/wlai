@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.config import settings, get_session_secret
+from app.config import get_session_secret, settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 def _decode_jwt(token: str) -> str | None:
     """验证 JWT 并返回 user_id；失败返回 None。"""
     try:
-        from jose import jwt, JWTError
+        from jose import JWTError, jwt
     except ImportError:
         return None
     secret = get_session_secret()
@@ -91,10 +91,11 @@ async def _ensure_local_admin():
     if not username or not password:
         return
     try:
-        from app.database import get_engine, _get_or_create_session_maker
-        from app.models.user import User
-        from sqlalchemy import select
         from passlib.context import CryptContext
+        from sqlalchemy import select
+
+        from app.database import _get_or_create_session_maker, get_engine
+        from app.models.user import User
 
         engine = await get_engine()
         SessionLocal = _get_or_create_session_maker(engine)
@@ -198,25 +199,33 @@ def create_app() -> FastAPI:
     from app.api.auth import router as auth_router
     app.include_router(auth_router)
 
+    # 项目 CRUD
+    from app.api.projects import router as projects_router
+    app.include_router(projects_router)
+
     from app.api.companion import router as companion_router
     from app.api.pm import router as pm_router
     from app.api.pm_control import router as pm_control_router
     from app.api.pm_diagnostic_logs import router as pm_diagnostic_logs_router
     from app.api.pm_token_usage import router as pm_token_usage_router
 
-    # API v1 — 通用一致性 Agent 接口
-    from app.api.v1.content import router as v1_content_router
-    from app.api.v1.reports import router as v1_reports_router
-    from app.api.v1.webhooks import router as v1_webhooks_router
-
     # API v1 — 漫剧制片 Agent 路由
     from app.api.v1.comic_bible import router as v1_comic_bible_router
     from app.api.v1.comic_storyboard import router as v1_comic_storyboard_router
-    from app.api.v1.tasks import router as v1_tasks_router
-    from app.api.v1.ws import router as v1_ws_router
-    
+
+    # API v1 — 通用一致性 Agent 接口
+    from app.api.v1.content import router as v1_content_router
+
     # API v1 — 小说章节路由
     from app.api.v1.novel_chapters import router as v1_novel_chapters_router
+    from app.api.v1.reports import router as v1_reports_router
+    from app.api.v1.tasks import router as v1_tasks_router
+
+    # API v1 — VisGuard 角色视觉一致性
+    from app.api.v1.visguard import router as v1_visguard_router
+    from app.api.v1.visguard_jobs import router as v1_visguard_jobs_router
+    from app.api.v1.webhooks import router as v1_webhooks_router
+    from app.api.v1.ws import router as v1_ws_router
 
     # 现有 PM 路由（向后兼容）
     app.include_router(pm_router)
@@ -236,6 +245,8 @@ def create_app() -> FastAPI:
     app.include_router(v1_tasks_router)
     app.include_router(v1_ws_router)
     app.include_router(v1_novel_chapters_router)
+    app.include_router(v1_visguard_router)
+    app.include_router(v1_visguard_jobs_router)
 
     # 健康检查路由
     from app.api.health import router as health_router
@@ -271,8 +282,9 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        # 4xx 返回原始 detail，5xx 隐藏内部信息
-        detail = exc.detail if exc.status_code < 500 else '服务内部错误'
+        # 4xx 与 503 返回原始 detail：503 的 detail 是客户端可读的提示文案
+        # （如"生成后端未配置"），其余 5xx 隐藏内部信息，避免泄漏堆栈/路径
+        detail = exc.detail if exc.status_code < 500 or exc.status_code == 503 else '服务内部错误'
         return JSONResponse(
             status_code=exc.status_code,
             content={'error': detail},

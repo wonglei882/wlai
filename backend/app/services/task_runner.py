@@ -6,7 +6,7 @@
 
 import asyncio
 import logging
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from sqlalchemy import select
 
@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 
 # task_id -> asyncio.Task（用于查询/取消）
 _running: dict[str, asyncio.Task] = {}
+
+
+async def _broadcast_progress(
+    task_id: str, progress: float, status: str, result: dict | None = None,
+) -> None:
+    """向 /ws/tasks/{task_id} 频道的客户端推送进度（广播失败不影响任务执行）。"""
+    try:
+        from app.api.v1.ws import broadcast_task_progress
+
+        await broadcast_task_progress(task_id, progress, status, result)
+    except Exception as e:  # noqa: BLE001 - 广播是尽力而为的增强能力
+        logger.debug('[TaskRunner] 进度广播失败 %s: %s', task_id, e)
 
 
 async def _update_task(task_id: str, **fields) -> None:
@@ -40,17 +52,20 @@ def submit_task(
 
     async def _runner() -> None:
         await _update_task(task.id, status='running', progress=0.05)
+        await _broadcast_progress(task.id, 0.05, 'running')
         try:
             result = await worker()
             await _update_task(
                 task.id, status='completed', progress=1.0, result=result,
             )
+            await _broadcast_progress(task.id, 1.0, 'completed', result)
         except Exception as e:  # noqa: BLE001 - 任务异常必须兜底回写
             logger.exception('后台任务 %s 执行失败: %s', task.id, e)
             await _update_task(
                 task.id, status='failed', progress=0.0,
                 result={'error': str(e)}, error=str(e),
             )
+            await _broadcast_progress(task.id, 0.0, 'failed', {'error': str(e)})
 
     loop = asyncio.get_running_loop()
     at = loop.create_task(_runner())

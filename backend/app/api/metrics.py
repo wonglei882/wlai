@@ -16,7 +16,6 @@ import logging
 import time
 
 from fastapi import APIRouter, Request, Response
-
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     CollectorRegistry,
@@ -66,6 +65,16 @@ pm_llm_failures = Gauge('wlai_pm_llm_failures', 'PM LLM 调用失败次数（累
 pm_llm_tokens = Gauge('wlai_pm_llm_tokens', 'PM LLM token 消耗（累计）', registry=REGISTRY)
 pm_fix_success_rate = Gauge('wlai_pm_fix_success_rate', 'PM 修复成功率（0-100）', registry=REGISTRY)
 pm_verify_pass_rate = Gauge('wlai_pm_verify_pass_rate', 'PM 验证通过率（0-100）', registry=REGISTRY)
+
+# ── VisGuard 指标（scrape 时从服务单例回填） ────────────────────────────────
+vg_total_characters = Gauge('wlai_visguard_total_characters', 'VisGuard 角色库角色总数', registry=REGISTRY)
+vg_active_projects = Gauge('wlai_visguard_active_projects', 'VisGuard 活跃项目数', registry=REGISTRY)
+vg_cache_hit_rate = Gauge(
+    'wlai_visguard_cache_hit_rate',
+    'VisGuard 缓存命中率（0-1）',
+    ['namespace'],
+    registry=REGISTRY,
+)
 
 # ── 系统资源指标 ────────────────────────────────────────────────────────────
 process_rss_bytes = Gauge('wlai_process_rss_bytes', '进程常驻内存（字节）', registry=REGISTRY)
@@ -126,6 +135,25 @@ def _update_pm_gauges() -> None:
         logger.debug('[Metrics] PM 指标回填失败: %s', e)
 
 
+def _update_visguard_gauges() -> None:
+    """从 VisGuard 服务单例回填角色库 / 缓存指标。"""
+    try:
+        from app.services.visguard import get_visguard_service
+
+        svc = get_visguard_service()
+        if svc is None:
+            return
+        status = svc.status()
+        vg_total_characters.set(status.get('total_characters', 0))
+        vg_active_projects.set(len(status.get('projects', [])))
+        cache = status.get('cache', {})
+        for ns in ('preprocess', 'generation', 'similarity'):
+            stat = cache.get(ns, {})
+            vg_cache_hit_rate.labels(ns).set(stat.get('hit_rate', 0.0))
+    except Exception as e:  # noqa: BLE001 - 指标回填失败不影响 scrape
+        logger.debug('[Metrics] VisGuard 指标回填失败: %s', e)
+
+
 def _update_system_gauges() -> None:
     """进程级系统资源指标。"""
     try:
@@ -150,5 +178,6 @@ def _update_system_gauges() -> None:
 async def metrics() -> Response:
     """Prometheus 文本格式指标输出。"""
     _update_pm_gauges()
+    _update_visguard_gauges()
     _update_system_gauges()
     return Response(content=generate_latest(REGISTRY), media_type=CONTENT_TYPE_LATEST)
