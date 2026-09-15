@@ -64,7 +64,9 @@ services:
       dockerfile: Dockerfile
       args:
         # NEXT_PUBLIC_* 是构建期内联变量，须放在 build.args（浏览器访问的地址）
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8000}
+        # API 代理转发目标：Docker 内部直连后端（构建时注入，供 rewrites 使用）
+        API_PROXY_TARGET: http://app:8000
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
