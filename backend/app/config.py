@@ -47,8 +47,30 @@ class Settings(BaseSettings):
     log_max_bytes: int = 10 * 1024 * 1024  # 10MB
     log_backup_count: int = 30  # 保留30个备份文件
 
-    # CORS配置
+    # CORS 配置（P0-1：通配符与凭据互斥防护）
     cors_origins: list[str] = ['http://localhost:8000', 'http://127.0.0.1:8000']
+    """允许的 CORS 来源。生产环境必须显式白名单；配置 "*" 时自动强制关闭凭据（浏览器规范）。
+
+    示例（.env）:
+        CORS_ORIGINS=["https://app.mumu-pm.com"]
+    """
+
+    cors_allow_credentials: bool = True
+    """是否允许跨域携带凭据。cors_origins 含 "*" 时被强制为 False（* 与 credentials 互斥）。"""
+
+    @property
+    def effective_cors_origins(self) -> list[str]:
+        """生效的 CORS 来源：通配符直通（配合 effective_allow_credentials=False 使用）。"""
+        if "*" in self.cors_origins:
+            return ["*"]
+        return self.cors_origins
+
+    @property
+    def effective_allow_credentials(self) -> bool:
+        """生效的凭据开关：来源含通配符时强制 False（浏览器规范：* 与 credentials 互斥）。"""
+        if "*" in self.cors_origins:
+            return False
+        return self.cors_allow_credentials
 
     # 数据库配置 - PostgreSQL
     database_url: str = DATABASE_URL
@@ -178,6 +200,20 @@ class Settings(BaseSettings):
 
     # 上传图片大小上限（MB）— multipart 与 base64 统一限制
     visguard_max_upload_mb: int = 10
+
+    # 内容安全（NSFW）检测 — 全局单例挂 app.state，默认关闭（模型可再按需下载）
+    visguard_content_safety_enabled: bool = False
+    """是否启用 NSFW zero-shot 检测。启用后图片入口（注册/追加/相似度）审核不过 422。
+    模型在首次请求时懒加载（需外网下载 openai/clip-vit-base-patch32）。"""
+
+    visguard_content_safety_device: str = 'cpu'  # cuda / cpu / mps
+    visguard_content_safety_model: str = 'openai/clip-vit-base-patch32'
+    visguard_nsfw_threshold: float = 0.5  # NSFW 分数阈值（> 阈值判定不过）
+
+    # 成本预算 — 云端生图按单张价格扣减，0 = 不限额（MVP 文件存储，单进程语义）
+    visguard_cloud_max_daily_cost: float = 0.0
+    """云端生图每日成本上限（元）。0 表示不限额。超限时创建任务返回 429。
+    存储为 data/budget.json（原子写），多实例部署需替换为 Redis Lua 存储。"""
 
     # 缓存（L1 内存 TTL / L2 Redis 可选 / 磁盘配额）
     visguard_cache_dir: str = str(DATA_DIR / 'visguard_cache')

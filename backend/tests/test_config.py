@@ -1,7 +1,5 @@
 """测试 Settings 配置加载与默认值。"""
 
-import pytest
-from unittest.mock import patch
 
 
 class TestSettingsDefaults:
@@ -50,6 +48,40 @@ class TestSettingsDefaults:
     def test_cors_origins_type(self):
         from app.config import settings
         assert isinstance(settings.cors_origins, list)
+
+    def test_cors_credentials_default_true(self):
+        from app.config import settings
+        assert settings.cors_allow_credentials is True
+
+    def test_cors_effective_no_wildcard(self):
+        # 白名单来源：凭据开关保留配置值
+        from app.config import Settings
+        s = Settings(cors_origins=['http://localhost:3000'], cors_allow_credentials=True)
+        assert s.effective_cors_origins == ['http://localhost:3000']
+        assert s.effective_allow_credentials is True
+
+    def test_cors_wildcard_forces_credentials_off(self):
+        # 通配符与凭据互斥（浏览器规范）：含 '*' 时强制关闭 credentials
+        from app.config import Settings
+        s = Settings(cors_origins=['*'], cors_allow_credentials=True)
+        assert s.effective_cors_origins == ['*']
+        assert s.effective_allow_credentials is False
+
+    def test_cors_wildcard_mixed_list(self):
+        # 列表中混有 '*' 同样触发强制关闭
+        from app.config import Settings
+        s = Settings(cors_origins=['*', 'http://localhost:8000'])
+        assert s.effective_cors_origins == ['*']
+        assert s.effective_allow_credentials is False
+
+    def test_visguard_new_fields_defaults(self):
+        from app.config import settings
+        # P0-3 NSFW 默认关闭（离线零成本放行）
+        assert settings.visguard_content_safety_enabled is False
+        assert settings.visguard_content_safety_device == 'cpu'
+        assert settings.visguard_nsfw_threshold > 0
+        # P0-4 成本预算默认不限额
+        assert settings.visguard_cloud_max_daily_cost == 0.0
 
     def test_database_slow_query_threshold(self):
         from app.config import settings
