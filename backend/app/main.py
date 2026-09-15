@@ -77,6 +77,23 @@ async def lifespan(app: FastAPI):
     # 自动创建本地管理员账户
     await _ensure_local_admin()
 
+    # ── VisGuard 全局单例（P0-3 / P0-4）──────────────────────────
+    # 内容安全检测：默认关闭；启用时模型懒加载（首次请求触发）
+    from app.config import DATA_DIR
+    from app.services.visguard.core.content_safety import ContentSafetyService
+    from app.services.visguard.core.cost_budget import CostBudget, FileBudgetStorage
+
+    app.state.content_safety = ContentSafetyService(
+        enabled=settings.visguard_content_safety_enabled,
+        device=settings.visguard_content_safety_device,
+        model_name=settings.visguard_content_safety_model,
+        threshold=settings.visguard_nsfw_threshold,
+    )
+    app.state.cost_budget = CostBudget(
+        daily_max=settings.visguard_cloud_max_daily_cost,
+        storage=FileBudgetStorage(path=DATA_DIR / 'budget.json'),
+    )
+
     logger.info('WLai PM 后端服务已启动')
     yield
     logger.info('WLai PM 后端服务已停止')
@@ -127,8 +144,8 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        allow_origins=settings.effective_cors_origins,
+        allow_credentials=settings.effective_allow_credentials,
         allow_methods=['*'],
         allow_headers=['*'],
     )
@@ -248,6 +265,10 @@ def create_app() -> FastAPI:
     app.include_router(v1_visguard_router)
     app.include_router(v1_visguard_jobs_router)
 
+    # VisGuard OpenAI 兼容端点（P0-5）：/api/v1/visguard/openai/*
+    from app.api.v1.visguard_openai import router as v1_visguard_openai_router
+    app.include_router(v1_visguard_openai_router)
+
     # 健康检查路由
     from app.api.health import router as health_router
     app.include_router(health_router)
@@ -282,9 +303,14 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(HTTPException)
     async def http_exception_handler(request: Request, exc: HTTPException):
-        # 4xx 与 503 返回原始 detail：503 的 detail 是客户端可读的提示文案
-        # （如"生成后端未配置"），其余 5xx 隐藏内部信息，避免泄漏堆栈/路径
-        detail = exc.detail if exc.status_code < 500 or exc.status_code == 503 else '服务内部错误'
+        # 4xx / 501 / 503 返回原始 detail：这些 status 的 detail 是客户端可读提示
+        # （501=未实现，如 OpenAI 兼容端点；503=服务不可用文案），
+        # 其余 5xx 隐藏内部信息，避免泄漏堆栈/路径
+        detail = (
+            exc.detail
+            if exc.status_code < 500 or exc.status_code in (501, 503)
+            else '服务内部错误'
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content={'error': detail},
