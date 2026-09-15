@@ -19,8 +19,9 @@ import base64
 import json
 import logging
 from dataclasses import fields
+from datetime import date, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -28,8 +29,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user_id, get_db_session_depends
 from app.api.v1.visguard import _owned_project
+from app.config import settings
 from app.services.task_runner import get_running_task, submit_task
 from app.services.visguard.core.artifact import Artifact, GenerationResult
+from app.services.visguard.core.cost_budget import DEFAULT_PRICE_PER_IMAGE, PRICE_PER_IMAGE
 from app.services.visguard.core.exceptions import BackendNotConfiguredError, VisGuardError
 from app.services.visguard.generation.base import GenerationParams
 from app.services.visguard.generation.factory import create_generator
@@ -101,6 +104,7 @@ def _map_job_error(e: VisGuardError) -> HTTPException:
 @router.post('/jobs', status_code=202)
 async def create_visguard_job(
     req: VisGuardJobCreateRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db_session_depends),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -108,6 +112,7 @@ async def create_visguard_job(
 
     Returns 202 + job_id；随后通过 GET /jobs/{job_id}/events（SSE）订阅进度。
     能力矩阵 generate 关闭时返回 503（不等异步失败，客户端立即感知不可用）。
+    云端模式 + 配置预算时按单价预扣（超出日限额 429）。
     """
     await _owned_project(req.project_id, db, user_id)
     generator = create_generator()
@@ -115,6 +120,32 @@ async def create_visguard_job(
         raise _map_job_error(
             BackendNotConfiguredError('生成后端未配置（visguard_generate_backend=none）')
         )
+
+    # 成本预算（P0-4）：cloud 后端 + 日限额 > 0 时按供应商单价预扣
+    if (
+        settings.visguard_generate_backend == 'cloud'
+        and settings.visguard_cloud_max_daily_cost > 0
+        and generator.backend_name != 'cloud-standby'
+    ):
+        budget = getattr(request.app.state, 'cost_budget', None)
+        if budget is not None:
+            price = PRICE_PER_IMAGE.get(req.provider, DEFAULT_PRICE_PER_IMAGE)
+            ok, used_total = budget.try_charge(price)
+            if not ok:
+                reset_at = date.today() + timedelta(days=1)
+                raise HTTPException(
+                    status_code=429,
+                    detail={
+                        'error': 'daily_cost_limit_exceeded',
+                        'message': (
+                            f'云端生图超出每日预算（{settings.visguard_cloud_max_daily_cost:.2f} 元），'
+                            '请明天再试或调高 visguard_cloud_max_daily_cost'
+                        ),
+                        'daily_limit': settings.visguard_cloud_max_daily_cost,
+                        'daily_used': used_total,
+                        'reset_at': reset_at.isoformat(),
+                    },
+                )
 
     from app.models.task import AsyncTask
 
