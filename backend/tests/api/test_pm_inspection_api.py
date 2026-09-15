@@ -1,4 +1,4 @@
-"""PM 主动巡检 API 集成测试 — GET /pm/inspect/{project_id}?user_id=xxx。
+"""PM 主动巡检 API 集成测试 — GET /api/pm/inspect/{project_id}?user_id=xxx。
 
 覆盖：
 - 健康项目：score=10.0、issues/warnings 为空、suggestions 提示健康；
@@ -15,7 +15,7 @@ TEST_USER_ID = 'u_test_api_user'
 
 
 async def _inspect(client, project_id, user_id=TEST_USER_ID):
-    resp = await client.get(f'/pm/inspect/{project_id}', params={'user_id': user_id})
+    resp = await client.get(f'/api/pm/inspect/{project_id}', params={'user_id': user_id})
     assert resp.status_code == 200, resp.text
     return resp.json()
 
@@ -118,7 +118,7 @@ async def test_inspect_project_not_found_404(api_env):
     """巡检不存在的项目 → 404（归属校验前置）。"""
     client, _ = api_env
     resp = await client.get(
-        f'/pm/inspect/{uuid.uuid4()}',
+        f'/api/pm/inspect/{uuid.uuid4()}',
         params={'user_id': TEST_USER_ID},
     )
     assert resp.status_code == 404
@@ -131,7 +131,7 @@ async def test_inspect_other_users_project_403(api_env, seed_project):
     other_project = await seed_project(user_id='u_test_api_other', title='他人项目')
 
     resp = await client.get(
-        f'/pm/inspect/{other_project}',
+        f'/api/pm/inspect/{other_project}',
         params={'user_id': TEST_USER_ID},
     )
     assert resp.status_code == 403

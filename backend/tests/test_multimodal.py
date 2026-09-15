@@ -137,17 +137,19 @@ class TestLocalBackend:
         assert backend.device == 'cpu'
 
     def test_is_available_false_before_load(self):
-        """模型未加载时 is_available 应为 False（transformers 不可用时）。"""
+        """模型未加载时 is_available 应为 False（不触发真实模型下载）。"""
         backend = LocalMultimodalBackend(model_name='nonexistent-model', device='cpu')
-        assert backend.is_available is False
+        with patch.object(backend, '_ensure_loaded', return_value=None):
+            assert backend.is_available is False
 
     @pytest.mark.asyncio
     async def test_analyze_returns_error_when_model_not_loaded(self):
-        """模型加载失败时 analyze 应返回错误信息。"""
+        """模型加载失败时 analyze 应返回错误信息（不触发真实模型下载）。"""
         backend = LocalMultimodalBackend(model_name='nonexistent-model', device='cpu')
-        result = await backend.analyze_image('http://example.com/img.png')
-        assert result.backend == 'local:nonexistent-model'
-        assert len(result.issues) > 0
+        with patch.object(backend, '_ensure_loaded', return_value=None):
+            result = await backend.analyze_image('http://example.com/img.png')
+            assert result.backend == 'local:nonexistent-model'
+            assert len(result.issues) > 0
 
 
 class TestVisionResult:

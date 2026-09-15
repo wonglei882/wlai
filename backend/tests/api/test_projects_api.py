@@ -52,7 +52,7 @@ async def test_project_isolation_between_users(api_env, seed_project):
     # 章节列表只按 project_id 过滤，不校验归属（挂靠成功与否由下游决定）；
     # 归属硬校验体现在 PM 巡检 API：用当前用户查他人项目 → 403
     resp = await client.get(
-        f'/pm/inspect/{other_project}',
+        f'/api/pm/inspect/{other_project}',
         params={'user_id': TEST_USER_ID},
     )
     assert resp.status_code == 403
@@ -92,7 +92,7 @@ async def test_pm_inspect_project_not_found(api_env):
     """巡检不存在的项目 → 404。"""
     client, _ = api_env
     resp = await client.get(
-        f'/pm/inspect/{uuid.uuid4()}',
+        f'/api/pm/inspect/{uuid.uuid4()}',
         params={'user_id': TEST_USER_ID},
     )
     assert resp.status_code == 404
