@@ -60,7 +60,7 @@ export default function ComicWorkspacePage({ params }: { params: Promise<{ id: s
                 )}
               </ToolWindow>
             </Panel>
-            <Separator className="w-1 bg-[#515151] data-[separator=true]:bg-[#4B6EAF]" />
+            <Separator className="w-1 cursor-col-resize bg-[#515151] hover:bg-[#4B6EAF] data-[separator=active]:bg-[#4B6EAF]" />
           </>
         )}
 
@@ -83,7 +83,7 @@ export default function ComicWorkspacePage({ params }: { params: Promise<{ id: s
                 {/* Properties Panel */}
                 {rightPanelVisible && (
                   <>
-                    <Separator className="w-1 bg-[#515151]" />
+                    <Separator className="w-1 cursor-col-resize bg-[#515151] data-[separator=active]:bg-[#4B6EAF]" />
                     <Panel defaultSize={30} minSize={15} maxSize={45} id="properties">
                       <ToolWindow title="属性">
                         <PropertiesPanel projectId={projectId} />
@@ -97,7 +97,7 @@ export default function ComicWorkspacePage({ params }: { params: Promise<{ id: s
             {/* Bottom Panel (Review + Log) */}
             {bottomPanelVisible && (
               <>
-                <Separator className="h-1 bg-[#515151]" />
+                <Separator className="h-1 cursor-row-resize bg-[#515151] data-[separator=active]:bg-[#4B6EAF]" />
                 <Panel defaultSize={30} minSize={10} maxSize={50} id="bottom-panel">
                   <div className="flex h-full flex-col bg-[#2B2B2B]">
                     {/* Bottom tab bar */}
