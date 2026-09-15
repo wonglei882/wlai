@@ -17,7 +17,7 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix='/pm-control', tags=['PM Control'])
+router = APIRouter(prefix='/api/pm-control', tags=['PM Control'])
 
 # 文件状态路径（Redis 不可用时的二次降级）
 _STATE_FILE = Path(__file__).resolve().parent.parent / 'data' / 'pm_control_state.json'

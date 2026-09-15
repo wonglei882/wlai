@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models.pm_diagnostic_log import PMDiagnosticLog
 from app.services.pm.pm_time import pm_now
 
-router = APIRouter(prefix='/pm-diagnostic-logs', tags=['PM'])
+router = APIRouter(prefix='/api/pm-diagnostic-logs', tags=['PM'])
 
 
 @router.get('')

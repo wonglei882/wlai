@@ -13,7 +13,7 @@ from app.database import get_db
 from app.models.pm_token_usage import PMTokenUsage
 from app.services.pm.pm_time import pm_now
 
-router = APIRouter(prefix='/pm-token-usage', tags=['PM Token Usage'])
+router = APIRouter(prefix='/api/pm-token-usage', tags=['PM Token Usage'])
 
 
 class TokenSummary(BaseModel):

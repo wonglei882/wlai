@@ -21,7 +21,7 @@ from app.models.pm_decision_log import PMDecisionLog
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix='/pm', tags=['PM Agent'])
+router = APIRouter(prefix='/api/pm', tags=['PM Agent'])
 
 # sentinel：判断 verified 参数是否被调用方显式提供
 _VERIFIED_SENTINEL = Query(None, description='按验证状态筛选')
