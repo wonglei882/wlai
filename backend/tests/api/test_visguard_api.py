@@ -12,9 +12,8 @@ import io
 
 import numpy as np
 import pytest_asyncio
-from PIL import Image
-
 from app.config import settings
+from PIL import Image
 
 TEST_USER_ID = 'u_test_api_user'
 OTHER_USER_ID = 'u_test_api_other'
@@ -217,18 +216,87 @@ async def test_add_image_and_delete(api_client, vg_service, seed_project):
     assert resp.status_code == 201
     assert resp.json()['image_id']
 
+    # 追加后 embedding_count=2（删除前验证）
     lst = await api_client.get('/api/v1/visguard/characters', params={'project_id': pid})
     assert lst.json()['characters'][0]['embedding_count'] == 2
 
-    # 删除 → 200；再删 → 404
-    dr = await api_client.delete(
-        f'/api/v1/visguard/characters/{cid}', params={'project_id': pid},
+    # 删除角色 → 图片目录 + 向量随角色移除
+    resp = await api_client.delete(
+        f'/api/v1/visguard/characters/{cid}',
+        params={'project_id': pid},
     )
-    assert dr.status_code == 200
+    assert resp.status_code == 200
+    assert resp.json()['deleted'] is True
+
+    # 再删 → 404
     dr2 = await api_client.delete(
         f'/api/v1/visguard/characters/{cid}', params={'project_id': pid},
     )
     assert dr2.status_code == 404
+
+
+async def test_list_character_images(api_client, vg_service, seed_project):
+    """新增端点：GET /characters/{id}/images → 返回参考图 ID 列表（按文件名排序）。"""
+    pid = await seed_project()
+    cid = await _register(client=api_client, pid=pid, name='主角')
+
+    files = {'image': ('t2.png', _png_bytes((20, 200, 20), size=128), 'image/png')}
+    resp = await api_client.post(
+        f'/api/v1/visguard/characters/{cid}/images',
+        files=files,
+        data={'project_id': pid},
+    )
+    assert resp.status_code == 201
+    second_image_id = resp.json()['image_id']
+
+    resp = await api_client.get(
+        f'/api/v1/visguard/characters/{cid}/images',
+        params={'project_id': pid},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body['character_id'] == cid
+    assert len(body['image_ids']) == 2
+    assert second_image_id in body['image_ids']
+
+
+async def test_get_character_image_file(api_client, vg_service, seed_project):
+    """新增端点：GET /characters/{id}/images/{image_id}/file → PNG 图片流。"""
+    pid = await seed_project()
+    cid = await _register(client=api_client, pid=pid, name='主角', rgb=(240, 40, 40))
+
+    # 列出图片拿到 image_id
+    resp = await api_client.get(
+        f'/api/v1/visguard/characters/{cid}/images',
+        params={'project_id': pid},
+    )
+    assert resp.status_code == 200
+    image_id = resp.json()['image_ids'][0]
+
+    # 取文件 → 200 + image/png；字节可被 PIL 重新解码
+    resp = await api_client.get(
+        f'/api/v1/visguard/characters/{cid}/images/{image_id}/file',
+        params={'project_id': pid},
+    )
+    assert resp.status_code == 200
+    assert resp.headers['content-type'] == 'image/png'
+    data = io.BytesIO(resp.content)
+    img = Image.open(data)
+    assert img.format == 'PNG'
+
+    # 不存在的 image_id → 404
+    resp = await api_client.get(
+        f'/api/v1/visguard/characters/{cid}/images/no-such-id/file',
+        params={'project_id': pid},
+    )
+    assert resp.status_code == 404
+
+    # 不存在的角色 → 404
+    resp = await api_client.get(
+        '/api/v1/visguard/characters/no-such-char/images/abc/file',
+        params={'project_id': pid},
+    )
+    assert resp.status_code == 404
 
 
 async def test_add_image_missing_character_404(api_client, vg_service, seed_project):

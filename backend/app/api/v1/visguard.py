@@ -24,6 +24,7 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user_id, get_db_session_depends
@@ -246,6 +247,61 @@ async def add_character_image(
     except VisGuardError as e:
         raise _map_visguard_error(e) from e
     return {'project_id': project_id, **result}
+
+
+# =============================================================================
+# GET /characters/{character_id}/images — 角色参考图列表
+# =============================================================================
+
+@router.get('/characters/{character_id}/images')
+async def list_character_images(
+    character_id: str,
+    project_id: str = Query(...),
+    db: AsyncSession = Depends(get_db_session_depends),
+    user_id: str = Depends(get_current_user_id),
+):
+    """列出角色的所有参考图 ID（供前端加载图片列表）。"""
+    await _owned_project(project_id, db, user_id)
+    service = _service_or_503()
+    bank = service.get_bank(project_id)
+    try:
+        image_ids = await _run_sync(bank.list_images, character_id)
+    except CharacterNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except VisGuardError as e:
+        raise _map_visguard_error(e) from e
+    return {
+        'project_id': project_id,
+        'character_id': character_id,
+        'image_ids': image_ids,
+    }
+
+
+# =============================================================================
+# GET /characters/{character_id}/images/{image_id}/file — 参考图文件
+# =============================================================================
+
+@router.get('/characters/{character_id}/images/{image_id}/file')
+async def get_character_image_file(
+    character_id: str,
+    image_id: str,
+    project_id: str = Query(...),
+    db: AsyncSession = Depends(get_db_session_depends),
+    user_id: str = Depends(get_current_user_id),
+):
+    """返回参考图 PNG 文件（JWT 鉴权后可直接用于 <img src>）。"""
+    await _owned_project(project_id, db, user_id)
+    service = _service_or_503()
+    bank = service.get_bank(project_id)
+    try:
+        img_path = await _run_sync(bank.get_image_path, character_id, image_id)
+    except CharacterNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except VisGuardError as e:
+        raise _map_visguard_error(e) from e
+    return FileResponse(img_path, media_type='image/png')
 
 
 # =============================================================================

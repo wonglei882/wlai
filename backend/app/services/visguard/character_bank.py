@@ -163,6 +163,35 @@ class CharacterBank:
         )
         return result
 
+    def list_images(self, character_id: str) -> list[str]:
+        """列出角色的所有参考图 ID（按文件名排序）。
+
+        Raises:
+            CharacterNotFoundError: 角色不存在。
+        """
+        if character_id not in self._characters:
+            raise CharacterNotFoundError(f'角色不存在: {character_id}')
+        img_dir = self.images_dir / character_id
+        if not img_dir.exists():
+            return []
+        return sorted(
+            p.stem for p in img_dir.iterdir() if p.suffix == '.png'
+        )
+
+    def get_image_path(self, character_id: str, image_id: str) -> Path:
+        """返回参考图文件路径。
+
+        Raises:
+            CharacterNotFoundError: 角色不存在。
+            FileNotFoundError: 图片不存在。
+        """
+        if character_id not in self._characters:
+            raise CharacterNotFoundError(f'角色不存在: {character_id}')
+        img_path = self.images_dir / character_id / f'{image_id}.png'
+        if not img_path.exists():
+            raise FileNotFoundError(f'图片不存在: {image_id}')
+        return img_path
+
     def list_characters(self) -> list[dict]:
         """全部角色（按创建顺序），附带向量条数。"""
         rows = self._rows()
