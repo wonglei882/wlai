@@ -1,10 +1,11 @@
 """应用配置管理"""
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pathlib import Path
 import logging
 import os
 import uuid
+from pathlib import Path
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 获取项目根目录(从backend/app/config.py向上两级)
 PROJECT_ROOT = Path(__file__).parent.parent
@@ -141,6 +142,46 @@ class Settings(BaseSettings):
     # 本地多模态配置
     multimodal_local_model: str = 'Qwen/Qwen2.5-VL-7B-Instruct'
     multimodal_local_device: str = 'cuda'  # cuda / cpu / mps
+
+    # ──────────────────────────────────────────────────────────────────────
+    # VisGuard 配置（角色视觉一致性服务）— 能力矩阵（v2 架构）
+    #   每个能力独立指定后端，互不耦合：
+    #     embedding  : local           — 唯一选项，CLIP 恒定本地跑（轻量、角色数据不上云）
+    #     preprocess : local|cloud|none — 预处理（lineart/canny/depth 等控制图）
+    #     generate   : cloud|none       — 生图（本地不做生图）
+    #     inspect    : local|cloud|none — 生成结果质检（VLM 评分）
+    #   visguard_ui_preset 仅影响前端默认展示（local/cloud/hybrid），不影响代码逻辑。
+    # 说明: 与 multimodal_backend 相互独立（生图/预处理 vs 视觉理解）。
+    # ──────────────────────────────────────────────────────────────────────
+    visguard_embedding_backend: str = 'local'
+    visguard_preprocess_backend: str = 'none'
+    visguard_generate_backend: str = 'none'
+    visguard_inspect_backend: str = 'none'
+    visguard_ui_preset: str = 'local'  # local / cloud / hybrid（仅前端默认值）
+    # 是否启用 VisGuard（全部能力关闭时等价于旧 visguard_mode=off）
+    # 保留派生属性，方便快速整体开关：get_visguard_enabled()
+
+    # CLIP 编码模型（embedding 后端恒为本地，量化后 <2GB 显存）
+    visguard_clip_model: str = 'openai/clip-vit-large-patch14'
+    visguard_clip_device: str = 'cuda'  # cuda / cpu / mps
+
+    # FAISS 索引根目录（默认 backend/data/visguard/{project_id}/）
+    visguard_index_root: str = str(DATA_DIR / 'visguard')
+    # 相似度默认阈值（0-1，低于阈值视为不匹配）
+    visguard_default_threshold: float = 0.7
+
+    # 云端供应商（preprocess/generate/inspect 为 cloud 时使用）
+    visguard_cloud_provider: str = ''  # sansi / aliyun / tencent / openai；留空时按能力回退
+
+    # 预处理默认分辨率（控制图输出边长）
+    visguard_preprocess_resolution: int = 1024
+
+    # 上传图片大小上限（MB）— multipart 与 base64 统一限制
+    visguard_max_upload_mb: int = 10
+
+    # 缓存（L1 内存 TTL / L2 Redis 可选 / 磁盘配额）
+    visguard_cache_dir: str = str(DATA_DIR / 'visguard_cache')
+    visguard_cache_max_mb: int = 1024
 
     # 提示词工坊配置
     WORKSHOP_MODE: str = 'client'  # client: 本地部署实例, server: 云端中央服务器
